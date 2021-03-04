@@ -1,5 +1,5 @@
-from BayesOpt_main import load_optimiser
-import simple_gui
+from veropt import load_optimiser
+from veropt import veropt_gui
 import matplotlib.pyplot as plt
 # from acq_funcs import PredefinedAcqFunction
 # from kernels import BayesOptModel, RBFModelBO

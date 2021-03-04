@@ -1,8 +1,8 @@
-from BayesOpt_main import BayesOptimiser
-from test_functions import *
-from acq_funcs import *
-from kernels import *
-import simple_gui
+from veropt import BayesOptimiser
+from veropt.obj_funcs.test_functions import *
+from veropt.acq_funcs import *
+from veropt.kernels import *
+from veropt import veropt_gui
 import botorch
 
 n_init_points = 16
@@ -53,4 +53,4 @@ optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, acq_func, mo
 
 # optimiser.run_all_opt_steps()
 
-simple_gui.run(optimiser)
+veropt_gui.run(optimiser)

@@ -1,6 +1,6 @@
-from kernels import *
+from veropt.kernels import *
 from sklearn import preprocessing
-from acq_funcs import *
+from veropt.acq_funcs import *
 import matplotlib.pyplot as plt
 from scipy.stats import truncnorm
 import warnings

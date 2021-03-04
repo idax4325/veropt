@@ -1,11 +1,8 @@
-import sys
-from gui_setup import Ui_MainWindow
+from veropt.gui.gui_setup import Ui_MainWindow
 from PySide2.QtWidgets import QApplication, QMainWindow, QLabel, QLineEdit, QPushButton, QWidget
 from PySide2.QtGui import QTextCursor
 from PySide2.QtCore import QThread, QObject, Signal
-from BayesOpt_main import BayesOptimiser  # , load_optimiser, prior_dists, PriorClass
-from copy import deepcopy
-import time
+from veropt import BayesOptimiser
 import sys
 from queue import Queue
 import torch

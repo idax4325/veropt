@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.metrics import mean_squared_error
 import torch
 import botorch
-from BayesOpt_main import ObjFunction
+from veropt import ObjFunction
 
 
 def generate_init_conds(true_params, noise_lvl, info_types=None):

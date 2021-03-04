@@ -1,6 +1,6 @@
 from typing import List, Dict
-from acq_funcs import *
-from optimiser import BayesOptimiser
+from veropt.acq_funcs import *
+from veropt import BayesOptimiser
 import matplotlib.pyplot as plt
 import dill
 import datetime

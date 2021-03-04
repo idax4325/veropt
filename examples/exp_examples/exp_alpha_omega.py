@@ -1,8 +1,8 @@
 if __name__ == '__main__':
-    from BayesOpt_main import BayesOptimiser, BayesExperiment
-    from test_functions import *
-    from acq_funcs import *
-    from kernels import *
+    from veropt import BayesOptimiser, BayesExperiment
+    from veropt.obj_funcs.test_functions import *
+    from veropt.acq_funcs import *
+    from veropt.kernels import *
 
 
 def run():

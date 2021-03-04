@@ -1,6 +1,6 @@
 import sys
 # from subprocess import Popen, PIPE
-from BayesOpt_main import ObjFunction
+from veropt import ObjFunction
 import os
 import xarray as xr
 import re
