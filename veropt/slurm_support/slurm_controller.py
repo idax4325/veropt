@@ -1,9 +1,8 @@
 import subprocess
 import time
-from BayesOpt_main import load_optimiser
+from veropt import load_optimiser
 import dill
 import click
-import torch
 import re
 
 
@@ -53,7 +52,7 @@ def cancel_jobs(job_name):
 @click.option('--optimiser')
 @click.option('--job_name')
 @click.option('--node_name')
-def slurm_controller(*args, **kwargs):
+def run(*args, **kwargs):
     optimiser_path = kwargs["optimiser"]
     job_name = kwargs["job_name"]
     node_name = kwargs["node_name"]
@@ -115,4 +114,4 @@ def slurm_controller(*args, **kwargs):
 
 
 if __name__ == '__main__':
-    slurm_controller()
+    run()

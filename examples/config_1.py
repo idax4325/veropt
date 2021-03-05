@@ -2,7 +2,7 @@ from veropt import BayesOptimiser
 from veropt.obj_funcs.test_functions import *
 from veropt.acq_funcs import *
 from veropt.kernels import *
-from veropt import veropt_gui
+from veropt.gui import veropt_gui
 
 # n_init_points = 8
 # n_bayes_points = 32*2
