@@ -135,6 +135,7 @@ class BayesOptimiser:
             self.stds = self.obj_func.stds
             self.init_vals = self.obj_func.init_vals
 
+        self.init_steps = None
         self.made_init_steps = False
 
         # self.current_point = 0
@@ -453,7 +454,7 @@ class BayesOptimiser:
 
     def init_normaliser(self):
 
-        if self.n_init_points > 0:
+        if self.n_init_points > 0 and self.made_init_steps:
             self.init_steps = self.normaliser_x.transform(self.init_steps.squeeze(0))
             self.init_steps = torch.tensor(self.init_steps).unsqueeze(0)
 

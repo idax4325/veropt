@@ -67,7 +67,7 @@ def run(*args, **kwargs):
 
         if jobs_running is False:
 
-            if optimiser.current_step < optimiser.n_steps:
+            if optimiser.current_step < optimiser.n_steps - 1:
 
                 suggested_step_filename = optimiser.run_opt_step()
                 optimiser.save_optimiser()

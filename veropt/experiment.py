@@ -5,10 +5,15 @@ import matplotlib.pyplot as plt
 import dill
 import datetime
 import torch
-from pathos.helpers import mp as pathos_multiprocess
+try:
+    import pathos
+    from pathos.helpers import mp as pathos_multiprocess
+except (ImportError, NameError, ModuleNotFoundError):
+    pass
 import os
 import time
 import subprocess
+import sys
 
 
 class BayesExperiment:
@@ -98,7 +103,7 @@ class BayesExperiment:
             self.run_rep(save)
 
     @staticmethod
-    def run_rep_parallel(bayes_optimiser: BayesOptimiser, queue: pathos_multiprocess.Queue, config_ind, rep_ind, seed):
+    def run_rep_parallel(bayes_optimiser: BayesOptimiser, queue, config_ind, rep_ind, seed):
 
         torch.manual_seed(seed)
         np.random.seed(seed)
@@ -129,6 +134,8 @@ class BayesExperiment:
 
         # Note: 'save' is True no matter what this^ receives
 
+        # TODO: Use slurm_set_up to generate shell files and copy over the run_full_exp_mpi.py
+
         n_cpus = int(os.environ['SLURM_JOB_CPUS_PER_NODE'])
         node_name = os.environ["SLURM_JOB_NODELIST"]
         shell_script_name = "mpi_exp_1.sh"
@@ -140,76 +147,82 @@ class BayesExperiment:
 
     def run_full_exp_parallel_smp(self, save=True):
 
-        n_cpus = os.cpu_count()
+        if 'pathos' in sys.modules:
 
-        remaining_runs = deepcopy(self.n_runs)
+            n_cpus = os.cpu_count()
 
-        while self.finished is False:
+            remaining_runs = deepcopy(self.n_runs)
 
-            round_start_time = time.time()
-            n_round_runs = np.min([n_cpus, remaining_runs])
-            processes = [0] * n_round_runs
-            # queue = pathos_multiprocess.Queue()
-            queues = [0] * n_round_runs
-            for queue_no in range(len(queues)):
-                queues[queue_no] = pathos_multiprocess.Queue()
+            while self.finished is False:
 
-            for proc_no in range(n_round_runs):
-                bayes_optimiser = deepcopy(self.bayes_opt_configs[self.current_config_no])
-                seed = int(torch.randint(1, int(2**32 - 1), (1,)))
-                processes[proc_no] = pathos_multiprocess.Process(target=self.run_rep_parallel,
-                                                                 args=(bayes_optimiser, queues[proc_no], self.current_config_no,
-                                                                       self.current_rep, seed))
-                processes[proc_no].start()
+                round_start_time = time.time()
+                n_round_runs = np.min([n_cpus, remaining_runs])
+                processes = [0] * n_round_runs
+                # queue = pathos_multiprocess.Queue()
+                queues = [0] * n_round_runs
+                for queue_no in range(len(queues)):
+                    queues[queue_no] = pathos_multiprocess.Queue()
 
-                if self.current_rep < self.repetitions - 1:
-                    self.current_rep += 1
+                for proc_no in range(n_round_runs):
+                    bayes_optimiser = deepcopy(self.bayes_opt_configs[self.current_config_no])
+                    seed = int(torch.randint(1, int(2**32 - 1), (1,)))
+                    processes[proc_no] = pathos_multiprocess.Process(target=self.run_rep_parallel,
+                                                                     args=(bayes_optimiser, queues[proc_no], self.current_config_no,
+                                                                           self.current_rep, seed))
+                    processes[proc_no].start()
 
-                elif self.current_config_no < self.n_configs - 1:
-                    self.current_rep = 0
-                    self.current_config_no += 1
+                    if self.current_rep < self.repetitions - 1:
+                        self.current_rep += 1
 
-                else:
-                    self.finished = True
+                    elif self.current_config_no < self.n_configs - 1:
+                        self.current_rep = 0
+                        self.current_config_no += 1
 
-            jobs_running = True
-            procs_status = [5] * len(processes)
-            last_waiting_n = 10e10
-            while jobs_running:
-                for proc_no, process in enumerate(processes):
-                    process.join(timeout=1)
-                    if process.is_alive():
-                        procs_status[proc_no] = 1
                     else:
-                        procs_status[proc_no] = 0
+                        self.finished = True
 
-                for queue in queues:
-                    while not queue.empty():
-                        message = queue.get()
-                        config_ind, rep_ind, vals, best_vals = message
-                        # config_ind, rep_ind, best_vals = message
+                jobs_running = True
+                procs_status = [5] * len(processes)
+                last_waiting_n = 10e10
+                while jobs_running:
+                    for proc_no, process in enumerate(processes):
+                        process.join(timeout=1)
+                        if process.is_alive():
+                            procs_status[proc_no] = 1
+                        else:
+                            procs_status[proc_no] = 0
 
-                        # self.bayes_opts[config_ind][rep_ind] = b_opt
-                        self.vals[config_ind][rep_ind] = deepcopy(vals)
-                        self.best_vals[config_ind][rep_ind] = deepcopy(best_vals)
+                    for queue in queues:
+                        while not queue.empty():
+                            message = queue.get()
+                            config_ind, rep_ind, vals, best_vals = message
+                            # config_ind, rep_ind, best_vals = message
 
-                waiting_n = np.sum(np.count_nonzero(procs_status))
-                if last_waiting_n != waiting_n:
-                    current_time = time.time()
-                    elapsed_time = (current_time - round_start_time) / 60.0
-                    print(f"Waited for {elapsed_time} minutes in this round, "
-                          f"for {waiting_n} processes out of {len(processes)}", flush=True)
-                    last_waiting_n = deepcopy(waiting_n)
+                            # self.bayes_opts[config_ind][rep_ind] = b_opt
+                            self.vals[config_ind][rep_ind] = deepcopy(vals)
+                            self.best_vals[config_ind][rep_ind] = deepcopy(best_vals)
 
-                if np.sum(procs_status) < 1:
-                    jobs_running = False
+                    waiting_n = np.sum(np.count_nonzero(procs_status))
+                    if last_waiting_n != waiting_n:
+                        current_time = time.time()
+                        elapsed_time = (current_time - round_start_time) / 60.0
+                        print(f"Waited for {elapsed_time} minutes in this round, "
+                              f"for {waiting_n} processes out of {len(processes)}", flush=True)
+                        last_waiting_n = deepcopy(waiting_n)
 
-            remaining_runs -= n_round_runs
+                    if np.sum(procs_status) < 1:
+                        jobs_running = False
 
-            self.print_status()
+                remaining_runs -= n_round_runs
 
-            if save:
-                self.save_experiment()
+                self.print_status()
+
+                if save:
+                    self.save_experiment()
+
+        else:
+            print("Could not run experiment in parallel because pathos is not imported"
+                  "This is probably because it isn't installed.")
 
     def print_status(self):
         print(f"Finished repetition {self.current_rep+1} of {self.repetitions} "

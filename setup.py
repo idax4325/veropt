@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-install_requires = ["botorch", "dill", "click", "scikit-learn", "scipy", "matplotlib", "numpy"]
+install_requires = ["botorch", "dill", "click", "scikit-learn", "scipy", "matplotlib", "numpy", "xarray"]
 extras_require = {
     "gui": ["PySide2"],
     "multi_processing_smp": ["pathos"],
@@ -9,7 +9,7 @@ extras_require = {
 
 setup(
     name='veropt',
-    version='0.4',
+    version='0.4.2',
     packages=find_packages(),
     url='https://github.com/idax4325/veropt',
     license='OSI Approved :: MIT License',
