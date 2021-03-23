@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Union
 from veropt.acq_funcs import *
 from veropt import BayesOptimiser
 import matplotlib.pyplot as plt
@@ -17,8 +17,8 @@ import sys
 
 
 class BayesExperiment:
-    def __init__(self, bayes_opt_configs: List[BayesOptimiser], parameters: Dict, repetitions=5, file_name=None,
-                 do_random_reps=True):
+    def __init__(self, bayes_opt_configs: List[BayesOptimiser], parameters: Union[List, Dict], repetitions=5,
+                 file_name=None, do_random_reps=True):
         self.bayes_opt_configs = bayes_opt_configs
         self.n_configs = len(bayes_opt_configs)
         self.bayes_opts = [[0]*repetitions] * len(bayes_opt_configs)
@@ -29,8 +29,11 @@ class BayesExperiment:
 
         if file_name is None:
             key_string = ""
-            for key in self.parameters.keys():
+            key_list = self.parameters.keys() if type(self.parameters) == dict else self.parameters
+            for key in key_list:
                 key_string += key + "_"
+                if len(key_string) > 30:
+                    break
             self.file_name = "Experiment_" + key_string + datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S") + ".pkl"
         else:
             self.file_name = file_name
@@ -109,7 +112,7 @@ class BayesExperiment:
         np.random.seed(seed)
         bayes_optimiser.run_all_opt_steps()
         # message = (config_ind, rep_ind, bayes_optimiser.best_val(in_real_units=True))
-        vals = bayes_optimiser.obj_func_vals_real_units()
+        vals = bayes_optimiser.obj_func_vals_real_units().flatten()
         best_vals = bayes_optimiser.best_val(in_real_units=True)
         message = (config_ind, rep_ind, vals, best_vals)
         # message = (config_ind, rep_ind, best_vals)
@@ -230,33 +233,67 @@ class BayesExperiment:
 
     def plot_mean_std(self):
 
-        n_finished_points = deepcopy(self.current_config_no)
-        if self.current_rep < self.repetitions - 1:
+        def make_plot(p_is_dict):
+            if p_is_dict or par_no == 0:
+                plt.figure()
+
+                if self.random_vals is not None:
+                    if p_is_dict:
+                        random_loc = \
+                            self.parameters[parameter][0] - (self.parameters[parameter][1] - self.parameters[parameter][0])
+                    else:
+                        random_loc = -1.0
+
+                    plt.plot(random_loc, self.random_best_vals.unsqueeze(0), '.r', alpha=0.2)
+                    plt.errorbar(random_loc, self.random_best_vals.mean(), self.random_best_vals.std(),
+                                 capsize=5, marker='*', color='red', label="Random Search" if not p_is_dict else "")
+                    if p_is_dict:
+                        plt.annotate(" Random \n  runs", (random_loc, self.random_best_vals.mean()))
+
+            if p_is_dict:
+                x_arr = self.parameters[parameter][0:points_in_this_paramater]
+            else:
+                x_arr = range_arr[par_no]
+
+            plt.errorbar(x_arr, self.best_vals[plotted_points:plotted_points + points_in_this_paramater].mean(axis=1),
+                         yerr=self.best_vals[plotted_points:plotted_points + points_in_this_paramater].std(axis=1),
+                         marker='*', linestyle='', capsize=5, label=parameter if not p_is_dict else "")
+            plt.plot(x_arr, self.best_vals[plotted_points:plotted_points + points_in_this_paramater],
+                     marker='.', color='black', linestyle='', alpha=0.2)
+
+            plt.legend()
+
+            if p_is_dict:
+                plt.xlabel(parameter)
+            else:
+                plt.xlabel("Configurations")
+                ax = plt.gca()
+                ax.get_xaxis().set_ticks([])
+                xlim_min = -1.5 if self.random_vals is not None else -0.5
+                xlim_max = len(self.parameters) - 0.5
+                plt.xlim([xlim_min, xlim_max])
+
+            plt.ylabel("Objective Function")
+
+        n_finished_points = deepcopy(self.current_config_no) + 1
+
+        if n_finished_points > 1 and self.current_rep < self.repetitions - 1:
             n_finished_points -= 1
         points_left_to_plot = deepcopy(n_finished_points)
 
-        for parameter in self.parameters:
+        parameters_is_dict = type(self.parameters) == dict
+
+        if not parameters_is_dict:
+            range_arr = np.arange(0, len(self.parameters))
+
+        for par_no, parameter in enumerate(self.parameters):
             plotted_points = n_finished_points - points_left_to_plot
-            plt.figure()
 
-            if self.random_vals is not None:
-                random_loc = self.parameters[parameter][0] - (self.parameters[parameter][1] - self.parameters[parameter][0])
-                plt.plot(random_loc, self.random_best_vals.unsqueeze(0), '.r', alpha=0.2)
-                plt.errorbar(random_loc, self.random_best_vals.mean(), self.random_best_vals.std(),
-                             capsize=5, marker='*', color='red')
-                plt.annotate(" Random \n  runs", (random_loc, self.random_best_vals.mean()))
+            len_par = len(self.parameters[parameter]) if parameters_is_dict else 1
 
-            points_in_this_paramater = np.min([len(self.parameters[parameter]), points_left_to_plot])
-            plt.errorbar(self.parameters[parameter][0:points_in_this_paramater],
-                         self.best_vals[plotted_points:plotted_points + points_in_this_paramater].mean(axis=1),
-                         yerr=self.best_vals[plotted_points:plotted_points + points_in_this_paramater].std(axis=1),
-                         marker='*', linestyle='', capsize=5)
-            plt.plot(self.parameters[parameter][0:points_in_this_paramater],
-                     self.best_vals[plotted_points:plotted_points + points_in_this_paramater],
-                     marker='.', color='black', linestyle='', alpha=0.2)
+            points_in_this_paramater = np.min([len_par, points_left_to_plot])
 
-            plt.xlabel(parameter)
-            plt.ylabel("Objective Function")
+            make_plot(p_is_dict=parameters_is_dict)
 
             plotted_points += points_in_this_paramater
             points_left_to_plot -= points_in_this_paramater
@@ -264,47 +301,55 @@ class BayesExperiment:
             if not points_left_to_plot > 0:
                 break
 
-    def plot_iteration(self, logscale=False):
+        plt.show()
+
+    def plot_iteration(self, max_configs_per_plot=5, logscale=False):
 
         cu_maxs = self.vals.cummax(dim=2)[0].mean(dim=1)
         stds = self.vals.cummax(dim=2)[0].std(dim=1)
 
-        n_finished_points = deepcopy(self.current_config_no)
-        if self.current_rep < self.repetitions - 1:
-            n_finished_points -= 1
-        points_left_to_plot = deepcopy(n_finished_points)
+        n_finished_configs = deepcopy(self.current_config_no) + 1
+        if n_finished_configs > 1 and self.current_rep < self.repetitions - 1:
+            n_finished_configs -= 1
+        configs_left_to_plot = deepcopy(n_finished_configs)
 
-        points_per_plot = 5
+        for par_no, parameter in enumerate(self.parameters):
+            plotted_configs = n_finished_configs - configs_left_to_plot
 
-        for parameter in self.parameters:
-            plotted_points = n_finished_points - points_left_to_plot
+            parameters_is_dict = type(self.parameters) == dict
 
-            points_in_this_paramater = np.min([len(self.parameters[parameter]), points_left_to_plot])
-            points_left_in_this_parameter = deepcopy(points_in_this_paramater)
+            len_par = len(self.parameters[parameter]) if parameters_is_dict else 1
 
-            while points_left_in_this_parameter > 0:
+            configs_in_this_paramater = np.min([len_par, configs_left_to_plot])
+            configs_left_in_this_parameter = deepcopy(configs_in_this_paramater)
 
-                points_to_plot = np.amin([points_per_plot, points_left_in_this_parameter])
+            while configs_left_in_this_parameter > 0:
 
-                plt.figure()
+                configs_to_plot = np.amin([max_configs_per_plot, configs_left_in_this_parameter])
 
-                if self.random_vals is not None:
-                    random_mean = self.random_vals.cummax(dim=1)[0].mean(dim=0)
-                    random_std = self.random_vals.cummax(dim=1)[0].std(dim=0)
-                    plt.plot(torch.arange(1, len(random_mean) + 1), random_mean, label='Random opt', color='black')
-                    plt.fill_between(torch.arange(1, len(random_mean) + 1), random_mean - random_std,
-                                     random_mean + random_std, alpha=0.1, color='black')
+                if not parameters_is_dict and (((par_no+1) % max_configs_per_plot) == 0 or par_no == 0):
 
-                cu_maxs_this_parameter = cu_maxs[plotted_points:plotted_points + points_to_plot]
-                stds_this_parameter = stds[plotted_points:plotted_points + points_to_plot]
+                    plt.figure()
+
+                    if self.random_vals is not None:
+                        random_mean = self.random_vals.cummax(dim=1)[0].mean(dim=0)
+                        random_std = self.random_vals.cummax(dim=1)[0].std(dim=0)
+                        plt.plot(torch.arange(1, len(random_mean) + 1), random_mean, label='Random Search', color='black')
+                        plt.fill_between(torch.arange(1, len(random_mean) + 1), random_mean - random_std,
+                                         random_mean + random_std, alpha=0.1, color='black')
+
+                cu_maxs_this_parameter = cu_maxs[plotted_configs:plotted_configs + configs_to_plot]
+                stds_this_parameter = stds[plotted_configs:plotted_configs + configs_to_plot]
 
                 if logscale:
                     plt.yscale('symlog')
 
                 for run_no, cu_maxs_run in enumerate(cu_maxs_this_parameter):
-                    start_point = (points_in_this_paramater - points_left_in_this_parameter)
-                    plt.plot(torch.arange(1, len(cu_maxs_run) + 1), cu_maxs_run,
-                             label=f'{parameter}: {self.parameters[parameter][run_no + start_point]:.2f}')
+                    start_point = (configs_in_this_paramater - configs_left_in_this_parameter)
+
+                    label = f'{parameter}: {self.parameters[parameter][run_no + start_point]:.2f}' \
+                        if parameters_is_dict else parameter
+                    plt.plot(torch.arange(1, len(cu_maxs_run) + 1), cu_maxs_run, label=label)
                     stds_run = stds_this_parameter[run_no]
                     plt.fill_between(torch.arange(1, len(stds_run) + 1), cu_maxs_run - stds_run, cu_maxs_run + stds_run,
                                      alpha=0.1)
@@ -313,15 +358,14 @@ class BayesExperiment:
                 plt.ylabel("Objective Function")
                 plt.legend()
 
-                # plotted_points += points_in_this_paramater
-                # points_left_to_plot -= points_in_this_paramater
+                plotted_configs += configs_to_plot
+                configs_left_to_plot -= configs_to_plot
+                configs_left_in_this_parameter -= configs_to_plot
 
-                plotted_points += points_to_plot
-                points_left_to_plot -= points_to_plot
-                points_left_in_this_parameter -= points_to_plot
-
-            if not points_left_to_plot > 0:
+            if not configs_left_to_plot > 0:
                 break
+
+        plt.show()
 
     @staticmethod
     def close_plots():

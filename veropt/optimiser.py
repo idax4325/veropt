@@ -260,7 +260,7 @@ class BayesOptimiser:
         if self.acq_func.acqfunc_name == 'EI':
             acq_func_args['best_f'] = self.obj_func_vals.max()
         elif self.acq_func.acqfunc_name == 'EHVI' or self.acq_func.acqfunc_name == 'qEHVI':
-            # TODO: Consider a better ref point
+            # TODO: Consider a better ref point. Maybe the nadir point? Maybe just compute once and then keep
             acq_func_args['ref_point'] = [-1.0] * self.n_objs
             acq_func_args['partitioning'] = botorch.utils.multi_objective.box_decomposition.NondominatedPartitioning(
                 self.n_objs, self.obj_func_vals

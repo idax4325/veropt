@@ -7,10 +7,8 @@ if __name__ == '__main__':
 
 def run():
 
-    # n_init_points = 16
-    # n_bayes_points = 64
-    n_init_points = 8
-    n_bayes_points = 0
+    n_init_points = 16
+    n_bayes_points = 64
 
     n_objs = 1
 
@@ -28,7 +26,6 @@ def run():
     alpha_array = np.linspace(0.1, 10, num=5)
     omega_array = np.linspace(0.1, 1.0, num=5)
 
-    # TODO: Change into something other than a list so it can have more dimensions?
     optimiser_list = []
 
     for alpha in alpha_array:
@@ -51,7 +48,6 @@ def run():
 
     parameters = {"alpha": alpha_array, "omega": omega_array}
 
-    # TODO: Implement flag to toggle whether parameters were cross-checked or run separately?
     experiment = BayesExperiment(optimiser_list, parameters)
 
     # experiment.run_full_experiment()

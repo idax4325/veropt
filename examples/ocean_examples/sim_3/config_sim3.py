@@ -30,48 +30,6 @@ class OceanObjSimThree(OceanObjFunction):
             y = - (min_vsf_depth_20N - param_dic["target_min_vsf_depth_20N"])**2
             return y, min_vsf_depth_20N
 
-        def calc_y_log(overturning, param_dic):
-            min_vsf_depth_20N = float(overturning["vsf_depth"][param_dic["measure_year"] - 1].min("zw")[25])
-            y = - np.log((min_vsf_depth_20N - param_dic["target_min_vsf_depth_20N"])**2)
-            return y, min_vsf_depth_20N
-
-        def symlog(x, target_x):
-
-            fraction = x / target_x
-
-            linear_region = 1.0
-
-            if -linear_region < fraction < linear_region:
-                y = fraction
-
-            elif fraction < 0:
-                y = - (-np.log(-x) - np.log(target_x)) ** 2
-
-            elif fraction > 0:
-                y = - (np.log(x) - np.log(target_x)) ** 2
-
-            # y = np.zeros(len(x))
-            #
-            # inds_0 = np.where((-linear_region < fraction) * (fraction < linear_region))
-            # inds_1 = np.where(fraction < 0)
-            # inds_2 = np.where(fraction > 0)
-            #
-            # y[inds_0] = fraction[inds_0]
-            # y[inds_1] = - (-np.log(-x[inds_1]) - np.log(target_x)) ** 2
-            #
-            # y[inds_2] = - (np.log(x[inds_2]) - np.log(target_x)) ** 2
-
-            return y
-
-        def calc_y_logx(overturning, param_dic):
-            min_vsf_depth_20N = float(overturning["vsf_depth"][param_dic["measure_year"] - 1].min("zw")[25])
-
-            target_min_vsf_depth_20N = param_dic["target_min_vsf_depth_20N"]
-
-            y = symlog(min_vsf_depth_20N, target_min_vsf_depth_20N)
-
-            return y, min_vsf_depth_20N
-
         calc_y_method = (calc_y, filetype, param_dic)
 
         super().__init__(bounds=bounds, n_params=n_params, n_objs=n_objs, calc_y_method=calc_y_method,

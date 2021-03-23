@@ -318,7 +318,7 @@ class LoaderOceanSim:
                 else:
                     new_y[file_no], new_results[file_no] = self.function(datasets[file_no], self.param_dic)
             except IndexError:
-                print(f"Import failed for file with id {id_list[file_no]}")
+                print(f"Import failed for file with id {int(id_list[file_no])}")
 
         # TODO: Put the 'new_results' somewhere
 
