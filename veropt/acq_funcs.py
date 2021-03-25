@@ -338,8 +338,14 @@ class AcqFunction:
 
 
 class PredefinedAcqFunction(AcqFunction):
-    def __init__(self, bounds, n_objs, n_evals_per_step, acqfunc_name="UCB_Var", optimiser_name=None,
+    def __init__(self, bounds, n_objs, n_evals_per_step, acqfunc_name=None, optimiser_name=None,
                  seq_dist_punish=True, **kwargs):
+
+        if acqfunc_name is None:
+            if n_objs > 1:
+                acqfunc_name = "EHVI"
+            else:
+                acqfunc_name = "UCB_Var"
 
         params = {}
 

@@ -14,18 +14,28 @@ import os
 import time
 import subprocess
 import sys
+from sklearn import preprocessing
 
 
 class BayesExperiment:
-    def __init__(self, bayes_opt_configs: List[BayesOptimiser], parameters: Union[List, Dict], repetitions=5,
-                 file_name=None, do_random_reps=True):
+    def __init__(self, bayes_opt_configs: List[BayesOptimiser], parameters: Union[List, Dict], n_objs, repetitions=5,
+                 obj_weights=None, file_name=None, do_random_reps=True, normaliser=None):
+
         self.bayes_opt_configs = bayes_opt_configs
         self.n_configs = len(bayes_opt_configs)
+
         self.bayes_opts = [[0]*repetitions] * len(bayes_opt_configs)
         self.repetitions = repetitions
         self.n_runs = self.n_configs * self.repetitions
+
         self.parameters = parameters
         self.do_random_reps = do_random_reps
+
+        self.n_objs = n_objs
+        self.obj_weights = obj_weights
+
+        if self.obj_weights is None:
+            self.obj_weights = torch.ones(self.n_objs) / self.n_objs
 
         if file_name is None:
             key_string = ""
@@ -41,9 +51,19 @@ class BayesExperiment:
         self.random_vals = None
         self.random_best_vals = None
 
+        self.normed_rvals_wsums = None
+        self.normed_rvals_wsums_best_vals = None
+
         self.n_points_per_run = self.bayes_opt_configs[0].n_points
-        self.best_vals = torch.zeros([self.n_configs, self.repetitions])
-        self.vals = torch.zeros([self.n_configs, self.repetitions, self.n_points_per_run])
+
+        self.best_vals = torch.zeros([self.n_configs, self.repetitions, self.n_objs])
+        self.vals = torch.zeros([self.n_configs, self.repetitions, self.n_points_per_run, self.n_objs])
+
+        self.normed_vals = torch.zeros([self.n_configs, self.repetitions, self.n_points_per_run, self.n_objs])
+        self.normed_best_vals = torch.zeros([self.n_configs, self.repetitions, self.n_objs])
+
+        self.normed_wsums = torch.zeros([self.n_configs, self.repetitions, self.n_points_per_run])
+        self.normed_wsum_best_vals = torch.zeros([self.n_configs, self.repetitions])
 
         self.obj_funcs = [0] * self.n_configs
         for config_no, config in enumerate(self.bayes_opt_configs):
@@ -56,20 +76,27 @@ class BayesExperiment:
         self.current_rep = 0
         self.finished = False
 
+        if normaliser is None:
+            normaliser = preprocessing.StandardScaler()
+
+        self.normaliser = normaliser
+
+        self.did_normalisation = False
+
     def run_random_rep(self):
 
         optimiser = deepcopy(self.bayes_opt_configs[0])
 
-        self.random_vals = torch.zeros([self.repetitions, self.n_points_per_run])
-        self.random_best_vals = torch.zeros([self.repetitions])
+        self.random_vals = torch.zeros([self.repetitions, self.n_points_per_run, self.n_objs])
+        self.random_best_vals = torch.zeros([self.repetitions, self.n_objs])
 
         for rep in range(self.repetitions):
-            init_steps = (optimiser.bounds[1] - optimiser.bounds[0]) \
+            random_points = (optimiser.bounds[1] - optimiser.bounds[0]) \
                          * torch.rand(optimiser.n_points, optimiser.n_params) + optimiser.bounds[0]
-            init_steps = init_steps.unsqueeze(0)
-            init_vals = optimiser.obj_func.run(init_steps)
-            self.random_vals[rep] = init_vals
-            self.random_best_vals[rep] = torch.max(init_vals)
+            random_points = random_points.unsqueeze(0)
+            random_vals = optimiser.obj_func.run(random_points)
+            self.random_vals[rep] = random_vals
+            # self.random_best_vals[rep] = torch.max(random_vals)
 
     def run_rep(self, save=True):
 
@@ -80,7 +107,7 @@ class BayesExperiment:
             bayes_optimiser = deepcopy(bayes_opt_config)
             bayes_optimiser.run_all_opt_steps()
             self.bayes_opts[self.current_config_no][self.current_rep] = bayes_optimiser
-            self.vals[self.current_config_no][self.current_rep] = bayes_optimiser.obj_func_vals_real_units().flatten()
+            self.vals[self.current_config_no][self.current_rep] = bayes_optimiser.obj_func_vals_real_units()
             self.best_vals[self.current_config_no, self.current_rep] = bayes_optimiser.best_val(in_real_units=True)
             self.print_status()
 
@@ -112,7 +139,7 @@ class BayesExperiment:
         np.random.seed(seed)
         bayes_optimiser.run_all_opt_steps()
         # message = (config_ind, rep_ind, bayes_optimiser.best_val(in_real_units=True))
-        vals = bayes_optimiser.obj_func_vals_real_units().flatten()
+        vals = bayes_optimiser.obj_func_vals_real_units()
         best_vals = bayes_optimiser.best_val(in_real_units=True)
         message = (config_ind, rep_ind, vals, best_vals)
         # message = (config_ind, rep_ind, best_vals)
@@ -124,29 +151,32 @@ class BayesExperiment:
             self.run_random_rep()
 
         if "SLURM_JOB_ID" in os.environ:
-            n_cpus = int(os.environ['SLURM_JOB_CPUS_PER_NODE'])
-            print(f"Doing {self.n_runs} opt-runs on slurm with {n_cpus} cpus.")
-            self.run_full_exp_parallel_cluster(save)
+            # n_cpus = int(os.environ['SLURM_JOB_CPUS_PER_NODE'])
+            # print(f"Doing {self.n_runs} opt-runs on slurm with {n_cpus} cpus.")
+            self.run_full_exp_parallel_cluster()
 
         else:
             n_cpus = os.cpu_count()
             print(f"Doing {self.n_runs} opt-runs with {n_cpus} cpus.")
             self.run_full_exp_parallel_smp(save)
 
-    def run_full_exp_parallel_cluster(self, save=True):
+    @staticmethod
+    def run_full_exp_parallel_cluster():
 
-        # Note: 'save' is True no matter what this^ receives
+        print("Deprecated feature! Please use slurm_support/slurm_set_up.py to automatically run experiments with mpi."
+              "Example: \n"
+              "from veropt.slurm_support import slurm_set_up"
+              "slurm_set_up.set_up_experiment(\"Experiment_VehicleSafety_2021_03_24_13_45_18.pkl\", \"aegir\")"
+              "slurm_set_up.start_exp_run(\"node000\")")
 
-        # TODO: Use slurm_set_up to generate shell files and copy over the run_full_exp_mpi.py
-
-        n_cpus = int(os.environ['SLURM_JOB_CPUS_PER_NODE'])
-        node_name = os.environ["SLURM_JOB_NODELIST"]
-        shell_script_name = "mpi_exp_1.sh"
-
-        self.save_experiment()
-
-        sbatch = subprocess.Popen(f"sbatch -w {node_name} --cpus-per-task={n_cpus} "
-                                  f"{shell_script_name} {n_cpus} {self.file_name}", shell=True)
+        # n_cpus = int(os.environ['SLURM_JOB_CPUS_PER_NODE'])
+        # node_name = os.environ["SLURM_JOB_NODELIST"]
+        # shell_script_name = "mpi_exp_1.sh"
+        #
+        # self.save_experiment()
+        #
+        # sbatch = subprocess.Popen(f"sbatch -w {node_name} --cpus-per-task={n_cpus} "
+        #                           f"{shell_script_name} {n_cpus} {self.file_name}", shell=True)
 
     def run_full_exp_parallel_smp(self, save=True):
 
@@ -231,7 +261,50 @@ class BayesExperiment:
         print(f"Finished repetition {self.current_rep+1} of {self.repetitions} "
               f"in optimiser config {self.current_config_no+1} of {self.n_configs}.", flush=True)
 
+    def update_normed_vals(self):
+
+        flattened_vals = torch.flatten(deepcopy(self.vals), start_dim=0, end_dim=2)
+
+        self.normaliser.fit(flattened_vals)
+        normed_vals_flat = self.normaliser.transform(flattened_vals)
+
+        self.normed_vals = normed_vals_flat.reshape(self.n_configs, self.repetitions, self.n_points_per_run, self.n_objs)
+
+        self.normed_vals = torch.tensor(self.normed_vals)
+
+        self.obj_weights = self.obj_weights.type(dtype=torch.float64)
+
+        weighted_sums = self.normed_vals @ self.obj_weights
+
+        maxs, max_inds = weighted_sums.max(dim=2)
+        max_inds = max_inds[0]
+
+        self.best_vals = self.vals[:, np.arange(self.repetitions), max_inds]
+        self.normed_best_vals = self.normed_vals[:, np.arange(self.repetitions), max_inds]
+
+        self.normed_wsums = weighted_sums
+        self.normed_wsum_best_vals = weighted_sums[:, np.arange(self.repetitions), max_inds]
+
+        if self.random_vals is not None:
+
+            normed_random_vals = self.normaliser.transform(self.random_vals.flatten(start_dim=0, end_dim=1))
+            normed_random_vals = torch.tensor(normed_random_vals).reshape(
+                self.repetitions, self.n_points_per_run, self.n_objs)
+            normed_random_vals_wsums = normed_random_vals @ self.obj_weights
+
+            rv_maxs, rv_max_inds = normed_random_vals_wsums.max(dim=1)
+
+            normed_random_vals_wsums_best_vals = normed_random_vals_wsums[np.arange(self.repetitions), rv_max_inds]
+
+            self.random_best_vals = self.random_vals[np.arange((self.repetitions)), rv_max_inds]
+
+            self.normed_rvals_wsums = normed_random_vals_wsums
+            self.normed_rvals_wsums_best_vals = normed_random_vals_wsums_best_vals
+
     def plot_mean_std(self):
+
+        if self.did_normalisation is False:
+            self.update_normed_vals()
 
         def make_plot(p_is_dict):
             if p_is_dict or par_no == 0:
@@ -244,8 +317,13 @@ class BayesExperiment:
                     else:
                         random_loc = -1.0
 
-                    plt.plot(random_loc, self.random_best_vals.unsqueeze(0), '.r', alpha=0.2)
-                    plt.errorbar(random_loc, self.random_best_vals.mean(), self.random_best_vals.std(),
+                    if self.n_objs > 1:
+                        random_best_vals = self.normed_rvals_wsums_best_vals
+                    else:
+                        random_best_vals = self.random_best_vals.squeeze(1)
+
+                    plt.plot(random_loc, random_best_vals.unsqueeze(0), '.r', alpha=0.2)
+                    plt.errorbar(random_loc, random_best_vals.mean(), random_best_vals.std(),
                                  capsize=5, marker='*', color='red', label="Random Search" if not p_is_dict else "")
                     if p_is_dict:
                         plt.annotate(" Random \n  runs", (random_loc, self.random_best_vals.mean()))
@@ -255,10 +333,15 @@ class BayesExperiment:
             else:
                 x_arr = range_arr[par_no]
 
-            plt.errorbar(x_arr, self.best_vals[plotted_points:plotted_points + points_in_this_paramater].mean(axis=1),
-                         yerr=self.best_vals[plotted_points:plotted_points + points_in_this_paramater].std(axis=1),
+            if self.n_objs > 1:
+                best_vals = self.normed_wsum_best_vals
+            else:
+                best_vals = self.best_vals.squeeze(2)
+
+            plt.errorbar(x_arr, best_vals[plotted_points:plotted_points + points_in_this_paramater].mean(axis=1),
+                         yerr=best_vals[plotted_points:plotted_points + points_in_this_paramater].std(axis=1),
                          marker='*', linestyle='', capsize=5, label=parameter if not p_is_dict else "")
-            plt.plot(x_arr, self.best_vals[plotted_points:plotted_points + points_in_this_paramater],
+            plt.plot(x_arr, best_vals[plotted_points:plotted_points + points_in_this_paramater],
                      marker='.', color='black', linestyle='', alpha=0.2)
 
             plt.legend()
@@ -305,8 +388,23 @@ class BayesExperiment:
 
     def plot_iteration(self, max_configs_per_plot=5, logscale=False):
 
-        cu_maxs = self.vals.cummax(dim=2)[0].mean(dim=1)
-        stds = self.vals.cummax(dim=2)[0].std(dim=1)
+        if self.did_normalisation is False:
+            self.update_normed_vals()
+
+        # TODO: Change logscale so it makes sense (the obj_vals kinda needs to go (upwards) toward zero or something)
+        #  But is thaaat sensible? Should probably be so global_max=0 and then the rest is normed from [-1, 0]
+        #  But I might not know global_max. Maybe just delete logscale for now?
+
+        if self.n_objs > 1:
+            plot_vals = self.normed_wsums
+        else:
+            plot_vals = self.vals.squeeze(3)
+
+        # cu_maxs = self.vals.cummax(dim=2)[0].mean(dim=1)
+        # stds = self.vals.cummax(dim=2)[0].std(dim=1)
+
+        cu_maxs = plot_vals.cummax(dim=2)[0].mean(dim=1)
+        stds = plot_vals.cummax(dim=2)[0].std(dim=1)
 
         n_finished_configs = deepcopy(self.current_config_no) + 1
         if n_finished_configs > 1 and self.current_rep < self.repetitions - 1:
@@ -332,8 +430,14 @@ class BayesExperiment:
                     plt.figure()
 
                     if self.random_vals is not None:
-                        random_mean = self.random_vals.cummax(dim=1)[0].mean(dim=0)
-                        random_std = self.random_vals.cummax(dim=1)[0].std(dim=0)
+
+                        if self.n_objs > 1:
+                            random_vals = self.normed_rvals_wsums
+                        else:
+                            random_vals = self.random_vals.squeeze(2)
+
+                        random_mean = random_vals.cummax(dim=1)[0].mean(dim=0)
+                        random_std = random_vals.cummax(dim=1)[0].std(dim=0)
                         plt.plot(torch.arange(1, len(random_mean) + 1), random_mean, label='Random Search', color='black')
                         plt.fill_between(torch.arange(1, len(random_mean) + 1), random_mean - random_std,
                                          random_mean + random_std, alpha=0.1, color='black')
@@ -354,7 +458,7 @@ class BayesExperiment:
                     plt.fill_between(torch.arange(1, len(stds_run) + 1), cu_maxs_run - stds_run, cu_maxs_run + stds_run,
                                      alpha=0.1)
 
-                plt.xlabel("Point")
+                plt.xlabel("Evaluation No")
                 plt.ylabel("Objective Function")
                 plt.legend()
 

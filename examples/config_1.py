@@ -38,6 +38,6 @@ optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, acq_func, mo
 # for i in range(5):
 #     optimiser.run_opt_step()
 
-# optimiser.run_all_opt_steps()
+optimiser.run_all_opt_steps()
 
-veropt_gui.run(optimiser)
+# veropt_gui.run(optimiser)

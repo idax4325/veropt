@@ -9,7 +9,7 @@ extras_require = {
 
 setup(
     name='veropt',
-    version='0.4.2',
+    version='0.4.4',
     packages=find_packages(),
     url='https://github.com/idax4325/veropt',
     license='OSI Approved :: MIT License',

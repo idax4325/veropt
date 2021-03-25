@@ -74,7 +74,7 @@ class BayesOptimiser:
 
     def __init__(self, n_init_points, n_bayes_points, obj_func: ObjFunction, acq_func: AcqFunction = None, model=None,
                  obj_weights=None, using_priors=False, normalise=True, points_before_fitting=15, test_mode=False,
-                 n_evals_per_step=1, file_name=None, verbose=True):
+                 n_evals_per_step=1, file_name=None, verbose=True, normaliser=None):
 
         self.n_init_points = n_init_points
         self.n_bayes_points = n_bayes_points
@@ -160,8 +160,11 @@ class BayesOptimiser:
         self.suggested_steps_filename = None
 
         if normalise:
-            self.normaliser_x = preprocessing.StandardScaler()
-            self.normaliser_y = preprocessing.StandardScaler()
+            if normaliser is None:
+                normaliser = preprocessing.StandardScaler
+
+            self.normaliser_x = normaliser()
+            self.normaliser_y = normaliser()
 
         if file_name is None:
             self.file_name = "Optimiser_" + self.obj_func.__class__.__name__ + "_" + \
@@ -442,7 +445,7 @@ class BayesOptimiser:
             self.opt_mode = "bayes"
 
     def fit_normaliser(self):
-        # .fit might not actually do anything when it's StandardScaler
+        # .fit might not actually do anything if it's StandardScaler
         self.normaliser_x.fit(self.obj_func_coords.squeeze(0))
         self.normaliser_y.fit(self.obj_func_vals.squeeze(0))
 

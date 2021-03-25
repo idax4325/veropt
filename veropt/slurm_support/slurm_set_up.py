@@ -23,9 +23,9 @@ class MakeShellFiles:
         os.chmod(file_path_name, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH )
 
 
-class MakeShellFilesTemplateZero(MakeShellFiles):
+class MakeShellFilesOptMODITemplate(MakeShellFiles):
 
-    def __init__(self, optimiser_name, partition_name, veros_file_name, execution_path, using_singularity=False,
+    def __init__(self, optimiser_name, partition_name, veros_file_name, execution_path, using_singularity=True,
                  image_path=None, conda_env=None):
         self.optimiser_name = optimiser_name
 
@@ -135,27 +135,69 @@ python {self.veros_file_name} --optimiser {self.optimiser_name} --identifier $1"
         return sh_string
 
 
+class MakeShellFilesExpAegirTemplate(MakeShellFiles):
+    def __init__(self, experiment_name, partition_name, execution_path, n_cores=32):
+        self.experiment_name = experiment_name
+        self.partition_name = partition_name
+        self.execution_path = execution_path
+        self.n_cores = n_cores
+
+    def write_shell_files(self):
+        self.make_shell_file(self.execution_path + "/exp_slurm.sh", self.make_basic_sh())
+
+    def make_basic_sh(self):
+
+        sh_string = f"""#!/bin/bash -l
+#SBATCH -p {self.partition_name}
+#SBATCH -A ocean
+#SBATCH --job-name=exp_veropt
+#SBATCH --time=23:59:59
+#SBATCH --constraint=v2
+#SBATCH --nodes=1
+#SBATCH --ntasks={self.n_cores}
+#SBATCH --cpus-per-task=1
+#SBATCH --threads-per-core=1
+#SBATCH --exclusive
+
+ml load PrgEnv-gnu/2019a
+
+ml load mpi4py/3.0.3_mvapich2.3.4_py3.8.6
+
+ml load anaconda/python3
+
+conda init bash
+source $HOME/.bashrc
+conda activate pytorch
+
+mpiexec -n {self.n_cores} python3 run_full_exp_mpi.py --experiment {self.experiment_name}"""
+
+        return sh_string
+
+
 def set_up(optimiser_name, partition_name, veros_file_name, make_new_slurm_controller=True, make_shell_files=True,
-           shell_file_class=None, using_singularity=False,
-           image_path=None, conda_env=None):
+           shell_file_class=None, using_singularity=False, image_path=None, conda_env=None):
     package_path = sys.path[0]  # Could also use .__file__
     execution_path = sys.path[1]
 
     if make_new_slurm_controller:
-        copyfile(package_path + "/slurm_controller.py", execution_path + "/slurm_controller.py")
+        copyfile(package_path + "/slurm_support/slurm_controller.py", execution_path + "/slurm_controller.py")
 
     if make_shell_files:
 
         if shell_file_class is None:
-            shell_file_class = MakeShellFilesTemplateZero(optimiser_name, partition_name, veros_file_name, execution_path,
-                                                          using_singularity, image_path, conda_env)
+            shell_file_class = MakeShellFilesOptMODITemplate(optimiser_name, partition_name, veros_file_name, execution_path,
+                                                             using_singularity, image_path, conda_env)
 
         shell_file_class.write_shell_files()
 
 
-def start_opt_run(node_name):
+def start_opt_run(node_name, sh_file_name=None):
+
+    if sh_file_name is None:
+        sh_file_name = "controller.sh"
+
     sbatch = subprocess.Popen(
-        f"sbatch -w {node_name} controller.sh {node_name}",
+        f"sbatch -w {node_name} {sh_file_name} {node_name}",
         shell=True, stdout=subprocess.PIPE)
 
     time.sleep(1)
@@ -166,4 +208,36 @@ def start_opt_run(node_name):
             print(line)
 
 
+def set_up_experiment(experiment_name, partition_name, make_new_mpi_run_file=True, make_shell_files=True,
+                      shell_file_class=None, n_cores=32):
+    package_path = sys.path[0]
+    execution_path = sys.path[1]
+
+    if make_new_mpi_run_file:
+        copyfile(package_path + "/slurm_support/run_full_exp_mpi.py", execution_path + "/run_full_exp_mpi.py")
+
+    if make_shell_files:
+
+        if shell_file_class is None:
+            shell_file_class = MakeShellFilesExpAegirTemplate(experiment_name, partition_name, execution_path,
+                                                              n_cores=n_cores)
+
+            shell_file_class.write_shell_files()
+
+
+def start_exp_run(node_name, sh_file_name=None):
+
+    if sh_file_name is None:
+        sh_file_name = "exp_slurm.sh"
+
+    sbatch = subprocess.Popen(
+        f"sbatch -w {node_name} {sh_file_name}", shell=True, stdout=subprocess.PIPE
+    )
+
+    time.sleep(1)
+
+    for i in range(50):
+        line = sbatch.stdout.readline().decode("utf-8")
+        if len(line) > 1:
+            print(line)
 
