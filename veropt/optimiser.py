@@ -108,6 +108,8 @@ class BayesOptimiser:
         else:
             self.obj_weights = obj_weights
 
+        self.obj_weights = self.obj_weights.type(dtype=torch.DoubleTensor)
+
         if torch.is_tensor(obj_func.bounds):
             self.bounds = obj_func.bounds.reshape(2, self.n_params)
         else:
@@ -263,11 +265,26 @@ class BayesOptimiser:
         if self.acq_func.acqfunc_name == 'EI':
             acq_func_args['best_f'] = self.obj_func_vals.max()
         elif self.acq_func.acqfunc_name == 'EHVI' or self.acq_func.acqfunc_name == 'qEHVI':
-            # TODO: Consider a better ref point. Maybe the nadir point? Maybe just compute once and then keep
-            acq_func_args['ref_point'] = [-1.0] * self.n_objs
-            acq_func_args['partitioning'] = botorch.utils.multi_objective.box_decomposition.NondominatedPartitioning(
-                self.n_objs, self.obj_func_vals
-            )
+
+            po_coords, po_vals = self.pareto_optimal_points()
+
+            # nadir_point = po_vals.min(1)[0].squeeze().tolist()
+
+            nadir_point = po_vals.min(1)[0].squeeze()
+
+            acq_func_args['ref_point'] = nadir_point
+
+            # Sad thing that is needed because botorch changed their file structure between versions :(
+            try:
+                acq_func_args['partitioning'] = botorch.utils.multi_objective.box_decompositions.non_dominated.\
+                    NondominatedPartitioning(
+                    ref_point=nadir_point, Y=self.obj_func_vals.squeeze(0)
+                )
+            except AttributeError:
+                acq_func_args[
+                    'partitioning'] = botorch.utils.multi_objective.box_decomposition.NondominatedPartitioning(
+                    self.n_objs, self.obj_func_vals
+                )
 
         self.acq_func.refresh(self.model.model, **acq_func_args)
 
@@ -1053,6 +1070,27 @@ class BayesOptimiser:
             best_val = obj_func_vals[0, :, max_for_single_obj_ind].max()
 
             return best_val
+
+    def pareto_optimal_points(self, sort_by_max_wsum=True):
+
+        obj_func_vals = deepcopy(self.obj_func_vals).squeeze(0).detach().numpy()
+
+        pareto_optimal_ind = np.ones(obj_func_vals.shape[0], dtype=bool)
+        for val_ind, val in enumerate(obj_func_vals):
+            if pareto_optimal_ind[val_ind]:
+                pareto_optimal_ind[pareto_optimal_ind] = np.any(obj_func_vals[pareto_optimal_ind] > val, axis=1)
+                pareto_optimal_ind[val_ind] = True
+
+        pareto_optimal_ind = pareto_optimal_ind.nonzero()[0]
+
+        if sort_by_max_wsum:
+            popt_vals = obj_func_vals[pareto_optimal_ind]
+            wsum_popt_vals = popt_vals @ self.obj_weights.detach().numpy()
+            max_ind = wsum_popt_vals.argsort()
+            max_ind = np.flip(max_ind)
+            pareto_optimal_ind = pareto_optimal_ind[max_ind]
+
+        return self.obj_func_coords[:, pareto_optimal_ind], self.obj_func_vals[:, pareto_optimal_ind]
 
     def obj_func_coords_real_units(self):
         coords_not_normalised = self.normaliser_x.inverse_transform(self.obj_func_coords)

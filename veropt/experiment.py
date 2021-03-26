@@ -95,8 +95,10 @@ class BayesExperiment:
                          * torch.rand(optimiser.n_points, optimiser.n_params) + optimiser.bounds[0]
             random_points = random_points.unsqueeze(0)
             random_vals = optimiser.obj_func.run(random_points)
+            random_vals = random_vals.reshape(self.n_points_per_run, self.n_objs)
             self.random_vals[rep] = random_vals
-            # self.random_best_vals[rep] = torch.max(random_vals)
+            if self.n_objs == 1:
+                self.random_best_vals[rep] = torch.max(random_vals, dim=0)[0]
 
     def run_rep(self, save=True):
 
@@ -296,14 +298,14 @@ class BayesExperiment:
 
             normed_random_vals_wsums_best_vals = normed_random_vals_wsums[np.arange(self.repetitions), rv_max_inds]
 
-            self.random_best_vals = self.random_vals[np.arange((self.repetitions)), rv_max_inds]
+            self.random_best_vals = self.random_vals[np.arange(self.repetitions), rv_max_inds]
 
             self.normed_rvals_wsums = normed_random_vals_wsums
             self.normed_rvals_wsums_best_vals = normed_random_vals_wsums_best_vals
 
     def plot_mean_std(self):
 
-        if self.did_normalisation is False:
+        if (self.did_normalisation is False) and (self.n_objs > 1):
             self.update_normed_vals()
 
         def make_plot(p_is_dict):
@@ -344,7 +346,8 @@ class BayesExperiment:
             plt.plot(x_arr, best_vals[plotted_points:plotted_points + points_in_this_paramater],
                      marker='.', color='black', linestyle='', alpha=0.2)
 
-            plt.legend()
+            if not p_is_dict:
+                plt.legend()
 
             if p_is_dict:
                 plt.xlabel(parameter)
@@ -388,7 +391,7 @@ class BayesExperiment:
 
     def plot_iteration(self, max_configs_per_plot=5, logscale=False):
 
-        if self.did_normalisation is False:
+        if (self.did_normalisation is False) and (self.n_objs > 1):
             self.update_normed_vals()
 
         # TODO: Change logscale so it makes sense (the obj_vals kinda needs to go (upwards) toward zero or something)
@@ -425,7 +428,9 @@ class BayesExperiment:
 
                 configs_to_plot = np.amin([max_configs_per_plot, configs_left_in_this_parameter])
 
-                if not parameters_is_dict and (((par_no+1) % max_configs_per_plot) == 0 or par_no == 0):
+                # TODO: Fix this
+                # if not parameters_is_dict and (((par_no+1) % max_configs_per_plot) == 0 or par_no == 0):
+                if True:
 
                     plt.figure()
 

@@ -3,10 +3,9 @@ from veropt.obj_funcs.test_functions import *
 from veropt.acq_funcs import *
 from veropt.kernels import *
 from veropt.gui import veropt_gui
-import botorch
 
 n_init_points = 16
-n_bayes_points = 32*2
+n_bayes_points = 64
 
 # n_evals_per_step = 8
 n_evals_per_step = 4
@@ -32,7 +31,13 @@ n_objs = obj_func.n_objs
 # optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, acq_func, model=kernel, test_mode=False,
 #                            using_priors=False, n_evals_per_step=n_evals_per_step)
 
-optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, test_mode=False,
-                           using_priors=False, n_evals_per_step=n_evals_per_step)
 
-veropt_gui.run(optimiser)
+optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, n_evals_per_step=n_evals_per_step)
+
+# veropt_gui.run(optimiser)
+
+print(optimiser.acq_func.acqfunc_name)
+
+optimiser.run_all_opt_steps()
+
+# po_coords, po_vals = optimiser.pareto_optimal_points()

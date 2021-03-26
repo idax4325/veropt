@@ -136,11 +136,26 @@ python {self.veros_file_name} --optimiser {self.optimiser_name} --identifier $1"
 
 
 class MakeShellFilesExpAegirTemplate(MakeShellFiles):
-    def __init__(self, experiment_name, partition_name, execution_path, n_cores=32):
+    def __init__(self, experiment_name, partition_name, execution_path, constraint="v1", n_cores=None):
         self.experiment_name = experiment_name
         self.partition_name = partition_name
         self.execution_path = execution_path
-        self.n_cores = n_cores
+
+        if constraint not in ["v1", "v2", "v3"]:
+            raise Exception("Constraint must be 'v1', 'v2' or 'v3'!")
+
+        self.constraint = constraint
+
+        if n_cores is None:
+
+            if self.constraint == "v1":
+                self.n_cores = 16
+            elif self.constraint == "v2":
+                self.n_cores = 32
+            elif self.constraint == "v3":
+                self.n_cores = 48
+        else:
+            self.n_cores = n_cores
 
     def write_shell_files(self):
         self.make_shell_file(self.execution_path + "/exp_slurm.sh", self.make_basic_sh())
@@ -152,16 +167,12 @@ class MakeShellFilesExpAegirTemplate(MakeShellFiles):
 #SBATCH -A ocean
 #SBATCH --job-name=exp_veropt
 #SBATCH --time=23:59:59
-#SBATCH --constraint=v2
+#SBATCH --constraint={self.constraint}
 #SBATCH --nodes=1
 #SBATCH --ntasks={self.n_cores}
 #SBATCH --cpus-per-task=1
 #SBATCH --threads-per-core=1
 #SBATCH --exclusive
-
-ml load PrgEnv-gnu/2019a
-
-ml load mpi4py/3.0.3_mvapich2.3.4_py3.8.6
 
 ml load anaconda/python3
 
@@ -176,8 +187,8 @@ mpiexec -n {self.n_cores} python3 run_full_exp_mpi.py --experiment {self.experim
 
 def set_up(optimiser_name, partition_name, veros_file_name, make_new_slurm_controller=True, make_shell_files=True,
            shell_file_class=None, using_singularity=False, image_path=None, conda_env=None):
-    package_path = sys.path[0]  # Could also use .__file__
-    execution_path = sys.path[1]
+    execution_path = sys.path[0]
+    package_path = sys.modules['veropt'].__path__[0]
 
     if make_new_slurm_controller:
         copyfile(package_path + "/slurm_support/slurm_controller.py", execution_path + "/slurm_controller.py")
@@ -185,8 +196,8 @@ def set_up(optimiser_name, partition_name, veros_file_name, make_new_slurm_contr
     if make_shell_files:
 
         if shell_file_class is None:
-            shell_file_class = MakeShellFilesOptMODITemplate(optimiser_name, partition_name, veros_file_name, execution_path,
-                                                             using_singularity, image_path, conda_env)
+            shell_file_class = MakeShellFilesOptMODITemplate(optimiser_name, partition_name, veros_file_name,
+                                                             execution_path, using_singularity, image_path, conda_env)
 
         shell_file_class.write_shell_files()
 
@@ -208,10 +219,10 @@ def start_opt_run(node_name, sh_file_name=None):
             print(line)
 
 
-def set_up_experiment(experiment_name, partition_name, make_new_mpi_run_file=True, make_shell_files=True,
-                      shell_file_class=None, n_cores=32):
-    package_path = sys.path[0]
-    execution_path = sys.path[1]
+def set_up_experiment(experiment_name, partition_name, constraint="v1", make_new_mpi_run_file=True,
+                      make_shell_files=True, shell_file_class=None, n_cores=32):
+    execution_path = sys.path[0]
+    package_path = sys.modules['veropt'].__path__[0]
 
     if make_new_mpi_run_file:
         copyfile(package_path + "/slurm_support/run_full_exp_mpi.py", execution_path + "/run_full_exp_mpi.py")
@@ -220,7 +231,7 @@ def set_up_experiment(experiment_name, partition_name, make_new_mpi_run_file=Tru
 
         if shell_file_class is None:
             shell_file_class = MakeShellFilesExpAegirTemplate(experiment_name, partition_name, execution_path,
-                                                              n_cores=n_cores)
+                                                              constraint=constraint, n_cores=n_cores)
 
             shell_file_class.write_shell_files()
 
