@@ -51,6 +51,7 @@ class BayesExperiment:
         self.random_vals = None
         self.random_best_vals = None
 
+        self.normed_rvals = None
         self.normed_rvals_wsums = None
         self.normed_rvals_wsums_best_vals = None
 
@@ -265,12 +266,24 @@ class BayesExperiment:
 
     def update_normed_vals(self):
 
-        flattened_vals = torch.flatten(deepcopy(self.vals), start_dim=0, end_dim=2)
+        n_finished_configs = deepcopy(self.current_config_no) + 1
+
+        if n_finished_configs > 1 and self.current_rep < self.repetitions - 1:
+            n_finished_configs -= 1
+
+        if n_finished_configs > 1:
+            n_finished_reps = deepcopy(self.repetitions)
+            flattened_vals = torch.flatten(deepcopy(self.vals[0:n_finished_configs]), start_dim=0, end_dim=2)
+
+        else:
+            n_finished_reps = self.current_rep + 1
+            flattened_vals = torch.flatten(deepcopy(self.vals[0:n_finished_configs, 0:n_finished_reps]),
+                                           start_dim=0, end_dim=2)
 
         self.normaliser.fit(flattened_vals)
         normed_vals_flat = self.normaliser.transform(flattened_vals)
 
-        self.normed_vals = normed_vals_flat.reshape(self.n_configs, self.repetitions, self.n_points_per_run, self.n_objs)
+        self.normed_vals = normed_vals_flat.reshape(n_finished_configs, n_finished_reps, self.n_points_per_run, self.n_objs)
 
         self.normed_vals = torch.tensor(self.normed_vals)
 
@@ -279,29 +292,33 @@ class BayesExperiment:
         weighted_sums = self.normed_vals @ self.obj_weights
 
         maxs, max_inds = weighted_sums.max(dim=2)
-        max_inds = max_inds[0]
+        max_inds = max_inds
 
-        self.best_vals = self.vals[:, np.arange(self.repetitions), max_inds]
-        self.normed_best_vals = self.normed_vals[:, np.arange(self.repetitions), max_inds]
+        I, J = torch.arange(n_finished_configs).unsqueeze(1), torch.arange(n_finished_reps)
+        self.best_vals = self.vals[I, J, max_inds]
+        self.normed_best_vals = self.normed_vals[I, J, max_inds]
 
         self.normed_wsums = weighted_sums
-        self.normed_wsum_best_vals = weighted_sums[:, np.arange(self.repetitions), max_inds]
+        self.normed_wsum_best_vals = weighted_sums[I, J, max_inds]
 
         if self.random_vals is not None:
 
-            normed_random_vals = self.normaliser.transform(self.random_vals.flatten(start_dim=0, end_dim=1))
+            normed_random_vals = self.normaliser.transform(self.random_vals[0:n_finished_reps].flatten(start_dim=0, end_dim=1))
             normed_random_vals = torch.tensor(normed_random_vals).reshape(
-                self.repetitions, self.n_points_per_run, self.n_objs)
+                n_finished_reps, self.n_points_per_run, self.n_objs)
             normed_random_vals_wsums = normed_random_vals @ self.obj_weights
 
             rv_maxs, rv_max_inds = normed_random_vals_wsums.max(dim=1)
 
-            normed_random_vals_wsums_best_vals = normed_random_vals_wsums[np.arange(self.repetitions), rv_max_inds]
+            normed_random_vals_wsums_best_vals = normed_random_vals_wsums[np.arange(n_finished_reps), rv_max_inds]
 
-            self.random_best_vals = self.random_vals[np.arange(self.repetitions), rv_max_inds]
+            self.random_best_vals = self.random_vals[np.arange(n_finished_reps), rv_max_inds]
 
+            self.normed_rvals = normed_random_vals
             self.normed_rvals_wsums = normed_random_vals_wsums
             self.normed_rvals_wsums_best_vals = normed_random_vals_wsums_best_vals
+
+        self.did_normalisation = True
 
     def plot_mean_std(self):
 
@@ -331,7 +348,7 @@ class BayesExperiment:
                         plt.annotate(" Random \n  runs", (random_loc, self.random_best_vals.mean()))
 
             if p_is_dict:
-                x_arr = self.parameters[parameter][0:points_in_this_paramater]
+                x_arr = self.parameters[parameter][0:configs_in_this_paramater]
             else:
                 x_arr = range_arr[par_no]
 
@@ -340,10 +357,10 @@ class BayesExperiment:
             else:
                 best_vals = self.best_vals.squeeze(2)
 
-            plt.errorbar(x_arr, best_vals[plotted_points:plotted_points + points_in_this_paramater].mean(axis=1),
-                         yerr=best_vals[plotted_points:plotted_points + points_in_this_paramater].std(axis=1),
+            plt.errorbar(x_arr, best_vals[plotted_configs:plotted_configs + configs_in_this_paramater].mean(axis=1),
+                         yerr=best_vals[plotted_configs:plotted_configs + configs_in_this_paramater].std(axis=1),
                          marker='*', linestyle='', capsize=5, label=parameter if not p_is_dict else "")
-            plt.plot(x_arr, best_vals[plotted_points:plotted_points + points_in_this_paramater],
+            plt.plot(x_arr, best_vals[plotted_configs:plotted_configs + configs_in_this_paramater],
                      marker='.', color='black', linestyle='', alpha=0.2)
 
             if not p_is_dict:
@@ -361,11 +378,11 @@ class BayesExperiment:
 
             plt.ylabel("Objective Function")
 
-        n_finished_points = deepcopy(self.current_config_no) + 1
+        n_finished_configs = deepcopy(self.current_config_no) + 1
 
-        if n_finished_points > 1 and self.current_rep < self.repetitions - 1:
-            n_finished_points -= 1
-        points_left_to_plot = deepcopy(n_finished_points)
+        if n_finished_configs > 1 and self.current_rep < self.repetitions - 1:
+            n_finished_configs -= 1
+        configs_left_to_plot = deepcopy(n_finished_configs)
 
         parameters_is_dict = type(self.parameters) == dict
 
@@ -373,51 +390,63 @@ class BayesExperiment:
             range_arr = np.arange(0, len(self.parameters))
 
         for par_no, parameter in enumerate(self.parameters):
-            plotted_points = n_finished_points - points_left_to_plot
+            plotted_configs = n_finished_configs - configs_left_to_plot
 
             len_par = len(self.parameters[parameter]) if parameters_is_dict else 1
 
-            points_in_this_paramater = np.min([len_par, points_left_to_plot])
+            configs_in_this_paramater = np.min([len_par, configs_left_to_plot])
 
             make_plot(p_is_dict=parameters_is_dict)
 
-            plotted_points += points_in_this_paramater
-            points_left_to_plot -= points_in_this_paramater
+            plotted_configs += configs_in_this_paramater
+            configs_left_to_plot -= configs_in_this_paramater
 
-            if not points_left_to_plot > 0:
+            if not configs_left_to_plot > 0:
                 break
 
         plt.show()
 
-    def plot_iteration(self, max_configs_per_plot=5, logscale=False):
+    def plot_iteration(self, max_configs_per_plot=5, plot_objs_separately=False, plot_mean_unc=True, logscale=False):
 
         if (self.did_normalisation is False) and (self.n_objs > 1):
             self.update_normed_vals()
 
-        # TODO: Change logscale so it makes sense (the obj_vals kinda needs to go (upwards) toward zero or something)
-        #  But is thaaat sensible? Should probably be so global_max=0 and then the rest is normed from [-1, 0]
-        #  But I might not know global_max. Maybe just delete logscale for now?
-
         if self.n_objs > 1:
             plot_vals = self.normed_wsums
+            if plot_objs_separately:
+                plot_vals = self.normed_vals
+                obj_cmap = plt.get_cmap("tab10")
+                conf_line_styles = ['--', '-', '-.', ':'] * 10
+                # hatch_styles = ['/', '', '\\', '|', '-', '+', 'x', 'o', 'O', '.', '*'] * 10
+                hatch_styles = ['']*20
         else:
             plot_vals = self.vals.squeeze(3)
-
-        # cu_maxs = self.vals.cummax(dim=2)[0].mean(dim=1)
-        # stds = self.vals.cummax(dim=2)[0].std(dim=1)
-
-        cu_maxs = plot_vals.cummax(dim=2)[0].mean(dim=1)
-        stds = plot_vals.cummax(dim=2)[0].std(dim=1)
+            plot_objs_separately = False
 
         n_finished_configs = deepcopy(self.current_config_no) + 1
         if n_finished_configs > 1 and self.current_rep < self.repetitions - 1:
             n_finished_configs -= 1
         configs_left_to_plot = deepcopy(n_finished_configs)
 
+        if n_finished_configs > 1:
+            n_finished_reps = deepcopy(self.repetitions)
+
+        else:
+            n_finished_reps = self.current_rep + 1
+
+        parameters_is_dict = type(self.parameters) == dict
+
+        if parameters_is_dict:
+            configs_cmap = plt.get_cmap('viridis')
+
+        cu_maxs = plot_vals.cummax(dim=2)[0].mean(dim=1)
+        if plot_mean_unc:
+            stds = plot_vals.cummax(dim=2)[0].std(dim=1) / np.sqrt(n_finished_reps)
+        else:
+            stds = plot_vals.cummax(dim=2)[0].std(dim=1)
+
         for par_no, parameter in enumerate(self.parameters):
             plotted_configs = n_finished_configs - configs_left_to_plot
-
-            parameters_is_dict = type(self.parameters) == dict
 
             len_par = len(self.parameters[parameter]) if parameters_is_dict else 1
 
@@ -433,35 +462,78 @@ class BayesExperiment:
                 if True:
 
                     plt.figure()
+                    if logscale:
+                        plt.yscale('symlog')
+
+                    if plot_objs_separately:
+                        linestyle_count = 0
 
                     if self.random_vals is not None:
 
                         if self.n_objs > 1:
                             random_vals = self.normed_rvals_wsums
+                            if plot_objs_separately:
+                                random_vals = self.normed_rvals
                         else:
                             random_vals = self.random_vals.squeeze(2)
 
                         random_mean = random_vals.cummax(dim=1)[0].mean(dim=0)
-                        random_std = random_vals.cummax(dim=1)[0].std(dim=0)
-                        plt.plot(torch.arange(1, len(random_mean) + 1), random_mean, label='Random Search', color='black')
-                        plt.fill_between(torch.arange(1, len(random_mean) + 1), random_mean - random_std,
-                                         random_mean + random_std, alpha=0.1, color='black')
+                        if plot_mean_unc:
+                            random_std = random_vals.cummax(dim=1)[0].std(dim=0) / np.sqrt(n_finished_reps)
+                        else:
+                            random_std = random_vals.cummax(dim=1)[0].std(dim=0)
+
+                        if not plot_objs_separately:
+                            plt.plot(torch.arange(1, len(random_mean) + 1), random_mean, label='Random Search',
+                                     color='black')
+                            plt.fill_between(torch.arange(1, len(random_mean) + 1), random_mean - random_std,
+                                             random_mean + random_std, alpha=0.1, color='black')
+                        else:
+                            for obj_no in range(self.n_objs):
+                                plt.plot(torch.arange(1, len(random_mean) + 1), random_mean[:, obj_no],
+                                         label=f'Random Search, obj {obj_no+1}', color=obj_cmap(obj_no),
+                                         linestyle=conf_line_styles[linestyle_count])
+
+                                r_mean_low = random_mean[:, obj_no] - random_std[:, obj_no]
+                                r_mean_high = random_mean[:, obj_no] + random_std[:, obj_no]
+                                plt.fill_between(torch.arange(1, len(random_mean) + 1), r_mean_low,
+                                                 r_mean_high, alpha=0.1, color=obj_cmap(obj_no),
+                                                 hatch=hatch_styles[linestyle_count], ec='black')
+
+                            linestyle_count += 1
 
                 cu_maxs_this_parameter = cu_maxs[plotted_configs:plotted_configs + configs_to_plot]
                 stds_this_parameter = stds[plotted_configs:plotted_configs + configs_to_plot]
-
-                if logscale:
-                    plt.yscale('symlog')
 
                 for run_no, cu_maxs_run in enumerate(cu_maxs_this_parameter):
                     start_point = (configs_in_this_paramater - configs_left_in_this_parameter)
 
                     label = f'{parameter}: {self.parameters[parameter][run_no + start_point]:.2f}' \
                         if parameters_is_dict else parameter
-                    plt.plot(torch.arange(1, len(cu_maxs_run) + 1), cu_maxs_run, label=label)
                     stds_run = stds_this_parameter[run_no]
-                    plt.fill_between(torch.arange(1, len(stds_run) + 1), cu_maxs_run - stds_run, cu_maxs_run + stds_run,
-                                     alpha=0.1)
+                    if not plot_objs_separately:
+                        if parameters_is_dict:
+                            configs_cmap_vals = np.flip(np.linspace(0, 250, num=configs_in_this_paramater, dtype=np.int_))
+                            color = configs_cmap(configs_cmap_vals[run_no])
+                        else:
+                            color = None
+                        plt.plot(torch.arange(1, len(cu_maxs_run) + 1), cu_maxs_run, label=label,
+                                 color=color)
+                        plt.fill_between(torch.arange(1, len(stds_run) + 1), cu_maxs_run - stds_run,
+                                         cu_maxs_run + stds_run, alpha=0.1,
+                                         color=color)
+                    else:
+                        for obj_no in range(self.n_objs):
+                            plt.plot(torch.arange(1, len(cu_maxs_run) + 1), cu_maxs_run[:, obj_no],
+                                     label=label + f", obj {obj_no + 1}", color=obj_cmap(obj_no),
+                                     linestyle=conf_line_styles[linestyle_count])
+
+                            low = cu_maxs_run[:, obj_no] - stds_run[:, obj_no]
+                            high = cu_maxs_run[:, obj_no] + stds_run[:, obj_no]
+                            plt.fill_between(torch.arange(1, len(stds_run) + 1), low, high, color=obj_cmap(obj_no),
+                                             alpha=0.1, hatch=hatch_styles[linestyle_count], ec='black')
+
+                        linestyle_count += 1
 
                 plt.xlabel("Evaluation No")
                 plt.ylabel("Objective Function")

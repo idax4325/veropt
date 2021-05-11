@@ -76,7 +76,7 @@
      <string>Run full opt step</string>
     </property>
    </widget>
-   <widget class="QPushButton" name="pushButton_plot_variables">
+   <widget class="QPushButton" name="pushButton_plot_pareto">
     <property name="geometry">
      <rect>
       <x>20</x>
@@ -86,7 +86,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>Plot variable values</string>
+     <string>Plot Pareto front</string>
     </property>
    </widget>
    <widget class="QPushButton" name="pushButton_suggest_point">
@@ -112,7 +112,7 @@
      </rect>
     </property>
    </widget>
-   <widget class="QLineEdit" name="lineEdit_gamma">
+   <widget class="QLineEdit" name="lineEdit_alpha">
     <property name="geometry">
      <rect>
       <x>508</x>
@@ -135,7 +135,7 @@
      <string>Beta:</string>
     </property>
    </widget>
-   <widget class="QLabel" name="label_gamma">
+   <widget class="QLabel" name="label_alpha">
     <property name="geometry">
      <rect>
       <x>260</x>
@@ -145,7 +145,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>Gamma:</string>
+     <string>Alpha:</string>
     </property>
    </widget>
    <widget class="QPushButton" name="pushButton_set_beta">
@@ -161,7 +161,7 @@
      <string>Set new value</string>
     </property>
    </widget>
-   <widget class="QPushButton" name="pushButton_set_gamma">
+   <widget class="QPushButton" name="pushButton_set_alpha">
     <property name="geometry">
      <rect>
       <x>560</x>
@@ -497,6 +497,19 @@
       <string>Plot predictions</string>
      </property>
     </widget>
+   </widget>
+   <widget class="QPushButton" name="pushButton_renormalise">
+    <property name="geometry">
+     <rect>
+      <x>700</x>
+      <y>190</y>
+      <width>181</width>
+      <height>32</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Renormalise</string>
+    </property>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">

@@ -302,14 +302,24 @@ class UpperConfidenceBoundRandomVarDist(botorch.acquisition.AnalyticAcquisitionF
             return mean - delta + rand_number + proximity_punish
 
 
-class AcqFunction:
-    def __init__(self, function_class, optimiser, bounds, n_objs, params=None, n_evals_per_step=1, acqfunc_name=None):
+class OptimiseWithDistPunish:
+    def __init__(self, alpha, omega):
+        self.alpha = alpha
+        self.omega = omega
 
-        # TODO: Implement a default optimiser
+    def add_dist_punishment(self, x, acq_func_val, other_points):
+        proximity_punish = torch.tensor([0.0])
+        scaling = acq_func_val * self.omega
+        for point in other_points:
+            proximity_punish += scaling * torch.exp(-((torch.sum(x - point) / self.alpha) ** 2))
 
-        self.function_class = function_class
-        self.optimiser = optimiser
+        return acq_func_val - proximity_punish
+
+
+class AcqOptimiser:
+    def __init__(self, bounds, function, n_objs, n_evals_per_step=1, params=None):  # , serial_opt=False
         self.bounds = bounds
+        self.n_evals_per_step = n_evals_per_step
 
         self.n_objs = n_objs
         if self.n_objs > 1:
@@ -317,7 +327,146 @@ class AcqFunction:
         else:
             self.multi_obj = False
 
-        self.params = params
+        if params is None:
+            self.params = {}
+        else:
+            self.params = params
+
+        self.function = function
+
+    def optimise(self, acq_func):
+        return self.function(acq_func)
+
+
+class PredefinedAcqOptimiser(AcqOptimiser):
+    def __init__(self, bounds, n_objs, n_evals_per_step=1, optimiser_name=None, seq_dist_punish=True,
+                 params_seq_opt=None):
+
+        if optimiser_name is None:
+            if n_evals_per_step > 1:
+                if seq_dist_punish:
+                    self.optimiser_name = 'dual_annealing'
+                else:
+                    self.optimiser_name = 'botorch'
+            else:
+                self.optimiser_name = 'dual_annealing'
+
+        else:
+            self.optimiser_name = optimiser_name
+
+        if params_seq_opt is None and seq_dist_punish is True:
+            params_seq_opt = {
+                'alpha': 1.0,
+                'omega': 1.0
+            }
+
+        if self.optimiser_name == 'dual_annealing':
+            function = self.dual_annealing
+
+        elif self.optimiser_name == 'botorch':
+            function = self.botorch_optim
+
+        if n_evals_per_step < 2:
+            self.seq_dist_punish = False
+        else:
+            self.seq_dist_punish = seq_dist_punish
+
+        if self.seq_dist_punish is True:
+            self.seq_optimiser = OptimiseWithDistPunish(params_seq_opt['alpha'], params_seq_opt['omega'])
+
+        super(PredefinedAcqOptimiser, self).__init__(bounds, function, n_objs, n_evals_per_step=n_evals_per_step,
+                                                     params=params_seq_opt)
+
+    def optimise(self, acq_func):
+        if not self.seq_dist_punish:
+            return self.function(acq_func)
+        else:
+            return self.optimise_sequentially_w_dist_punisher(acq_func)
+
+    def optimise_sequentially_w_dist_punisher(self, acq_func):
+
+        def dist_punish_wrapper(x, other_points):
+            acq_func_val = acq_func(x)
+
+            new_acq_func_val = self.seq_optimiser.add_dist_punishment(x, acq_func_val, other_points)
+
+            return new_acq_func_val
+
+        # TODO: DEBUG THIS
+        #  (Currently the first two points are always the same)
+
+        candidates = []
+        for candidate_no in range(self.n_evals_per_step):
+            candidates.append(self.function(lambda x: dist_punish_wrapper(x, candidates)))
+            print(f"Found point {candidate_no + 1} of {self.n_evals_per_step}.")
+
+        candidates = torch.stack(candidates, dim=1).squeeze(0)
+
+        return candidates
+
+    # TODO: Expand to support an arbitrary scipy optimiser
+    def dual_annealing(self, acq_func):
+
+        acq_opt_result = optimize.dual_annealing(
+            func=lambda x: -acq_func(torch.tensor(x).unsqueeze(0)).detach().numpy(),
+            bounds=self.bounds.T,
+            maxiter=1000)
+
+        candidates, acq_fun_value = [torch.tensor(acq_opt_result.x).unsqueeze(0),
+                                     -torch.tensor(acq_opt_result.fun).unsqueeze(0)]
+        return candidates
+
+    def botorch_optim(self, acq_func):
+        # TODO: Make these parameters changeable from the outside
+        # restarts = 10
+        # raw_samples = 500
+        # restarts = 2
+        # raw_samples = 50
+        # restarts = 50
+        # raw_samples = 1000
+
+        restarts = 500
+        raw_samples = 10000
+
+        method = "L-BFGS-B"
+
+        candidates, acq_fun_value = botorch.optim.optimize.optimize_acqf(
+            acq_function=acq_func,
+            bounds=self.bounds,
+            q=self.n_evals_per_step,
+            num_restarts=restarts,
+            raw_samples=raw_samples,  # used for intialization heuristic
+            options={
+                "method": method
+            }
+        )
+
+        return candidates
+
+
+class AcqFunction:
+    def __init__(self, function_class, bounds, n_objs, optimiser: AcqOptimiser = None, params=None, n_evals_per_step=1,
+                 acqfunc_name=None):
+
+        self.function_class = function_class
+        self.bounds = bounds
+
+        if optimiser is None:
+            self.optimiser = PredefinedAcqOptimiser(bounds, n_objs, n_evals_per_step=n_evals_per_step)
+        else:
+            self.optimiser = optimiser
+
+        self.n_objs = n_objs
+        if self.n_objs > 1:
+            self.multi_obj = True
+        else:
+            self.multi_obj = False
+
+        if params is None:
+            self.params = {}
+        else:
+            self.params = params
+
         self.n_evals_per_step = n_evals_per_step
         self.acqfunc_name = acqfunc_name
 
@@ -420,163 +569,14 @@ class PredefinedAcqFunction(AcqFunction):
         else:
             params_seq_opt = None
 
-        optimiser = PredefinedAcqOptimiser(bounds, n_objs, n_evals_per_step=n_evals_per_step, optimiser_name=optimiser_name,
-                                           seq_dist_punish=seq_dist_punish, params_seq_opt=params_seq_opt)
+        optimiser = PredefinedAcqOptimiser(bounds, n_objs, n_evals_per_step=n_evals_per_step,
+                                           optimiser_name=optimiser_name, seq_dist_punish=seq_dist_punish,
+                                           params_seq_opt=params_seq_opt)
 
-        super().__init__(acq_func_class, optimiser, bounds, n_objs, n_evals_per_step=n_evals_per_step, acqfunc_name=acqfunc_name)
-
-        self.params = params
-
-
-class OptimiseWithDistPunish:
-    def __init__(self, alpha, omega):
-        self.alpha = alpha
-        self.omega = omega
-
-    def add_dist_punishment(self, x, acq_func_val, other_points):
-        proximity_punish = torch.tensor([0.0])
-        # scaling = (mean + delta) * self.omega
-        scaling = acq_func_val * self.omega
-        for point in other_points:
-            proximity_punish += scaling * torch.exp(-((torch.sum(x - point) / self.alpha) ** 2))
-
-        return acq_func_val - proximity_punish
+        super().__init__(acq_func_class, bounds, n_objs, optimiser, n_evals_per_step=n_evals_per_step,
+                         acqfunc_name=acqfunc_name, params=params)
 
 
-class AcqOptimiser:
-    def __init__(self, bounds, function, n_objs, n_evals_per_step=1):  # , serial_opt=False
-        self.bounds = bounds
-        self.n_evals_per_step = n_evals_per_step
-        # self.serial_opt = serial_opt
 
-        self.n_objs = n_objs
-        if self.n_objs > 1:
-            self.multi_obj = True
-        else:
-            self.multi_obj = False
-
-        self.function = function
-
-    def optimise(self, acq_func):
-        return self.function(acq_func)
-        # if not self.serial_opt:
-        #     return self.function(acq_func)
-        # else:
-        #     return self.optimise_serial(acq_func)
-
-    # def optimise_serial(self, acq_func):
-    #     candidates = []
-    #     for candidate_no in range(self.n_evals_per_step):
-    #         candidates.append(self.function(acq_func, candidates))
-    #         print(f"Found point {candidate_no + 1} of {self.n_evals_per_step}.")
-    #
-    #     candidates = torch.stack(candidates, dim=1).squeeze(0)
-    #
-    #     return candidates
-
-
-class PredefinedAcqOptimiser(AcqOptimiser):
-    def __init__(self, bounds, n_objs, n_evals_per_step=1, optimiser_name=None, seq_dist_punish=False,
-                 params_seq_opt=None):
-
-        if optimiser_name is None:
-            if n_evals_per_step > 1:
-                if seq_dist_punish:
-                    self.optimiser_name = 'dual_annealing'
-                else:
-                    self.optimiser_name = 'botorch'
-            else:
-                self.optimiser_name = 'dual_annealing'
-
-        else:
-            self.optimiser_name = optimiser_name
-
-        if params_seq_opt is None and seq_dist_punish is True:
-            params_seq_opt = {
-                'alpha': 1.0,
-                'omega': 1.0
-            }
-
-        if self.optimiser_name == 'dual_annealing':
-            function = self.dual_annealing
-
-        elif self.optimiser_name == 'botorch':
-            function = self.botorch_optim
-
-        if n_evals_per_step < 2:
-            self.seq_dist_punish = False
-        else:
-            self.seq_dist_punish = seq_dist_punish
-
-        if self.seq_dist_punish is True:
-            self.seq_optimiser = OptimiseWithDistPunish(params_seq_opt['alpha'], params_seq_opt['omega'])
-
-        super(PredefinedAcqOptimiser, self).__init__(bounds, function, n_objs, n_evals_per_step=n_evals_per_step)
-
-    def optimise(self, acq_func):
-        if not self.seq_dist_punish:
-            return self.function(acq_func)
-        else:
-            return self.optimise_sequentially_w_dist_punisher(acq_func)
-
-    def optimise_sequentially_w_dist_punisher(self, acq_func):
-
-        def dist_punish_wrapper(x, other_points):
-            acq_func_val = acq_func(x)
-
-            new_acq_func_val = self.seq_optimiser.add_dist_punishment(x, acq_func_val, other_points)
-
-            return new_acq_func_val
-
-        # TODO: DEBUG THIS
-        #  (Currently the first two points are always the same)
-
-        candidates = []
-        for candidate_no in range(self.n_evals_per_step):
-            candidates.append(self.function(lambda x: dist_punish_wrapper(x, candidates)))
-            print(f"Found point {candidate_no + 1} of {self.n_evals_per_step}.")
-
-        candidates = torch.stack(candidates, dim=1).squeeze(0)
-
-        return candidates
-
-    # TODO: Change to any scipy optimiser
-    def dual_annealing(self, acq_func):
-
-        acq_opt_result = optimize.dual_annealing(
-            func=lambda x: -acq_func(torch.tensor(x).unsqueeze(0)).detach().numpy(),
-            bounds=self.bounds.T,
-            maxiter=1000)
-
-        candidates, acq_fun_value = [torch.tensor(acq_opt_result.x).unsqueeze(0),
-                                     -torch.tensor(acq_opt_result.fun).unsqueeze(0)]
-        return candidates
-
-    def botorch_optim(self, acq_func):
-        # TODO: Make these parameters changeable from the outside
-        # restarts = 10
-        # raw_samples = 500
-        # restarts = 2
-        # raw_samples = 50
-        # restarts = 50
-        # raw_samples = 1000
-
-        restarts = 500
-        raw_samples = 10000
-
-        method = "L-BFGS-B"
-
-        candidates, acq_fun_value = botorch.optim.optimize.optimize_acqf(
-            acq_function=acq_func,
-            bounds=self.bounds,
-            q=self.n_evals_per_step,
-            num_restarts=restarts,
-            raw_samples=raw_samples,  # used for intialization heuristic
-            options={
-                "method": method
-            }
-        )
-
-        return candidates
 
 

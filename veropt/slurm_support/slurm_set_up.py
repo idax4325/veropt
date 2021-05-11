@@ -220,7 +220,7 @@ def start_opt_run(node_name, sh_file_name=None):
 
 
 def set_up_experiment(experiment_name, partition_name, constraint="v1", make_new_mpi_run_file=True,
-                      make_shell_files=True, shell_file_class=None, n_cores=32):
+                      make_shell_files=True, shell_file_class=None, n_cores=None):
     execution_path = sys.path[0]
     package_path = sys.modules['veropt'].__path__[0]
 

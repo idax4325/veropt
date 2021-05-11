@@ -1,8 +1,5 @@
 from veropt import BayesOptimiser
-from veropt.obj_funcs.test_functions import *
-from veropt.acq_funcs import *
 from veropt.obj_funcs.ocean_sims import OceanObjFunction
-from veropt.kernels import *
 
 
 class OceanObjSimTwo(OceanObjFunction):
@@ -48,23 +45,6 @@ measure_year = 100
 target_vsf_depth_min_equator = -3200856.86124386
 
 obj_func = OceanObjSimTwo(target_vsf_depth_min_equator, measure_year=measure_year)
-
-# bounds = obj_func.bounds
-# n_params = obj_func.n_params
-# n_objs = obj_func.n_objs
-#
-# beta = 3.0
-# gamma = 0.01
-#
-# acq_func = PredefinedAcqFunction(bounds, n_objs=n_objs, n_evals_per_step=n_evals_per_step,
-#                                  acqfunc_name="UCB_Var", beta=beta, gamma=gamma)
-#
-# kernel = BayesOptModel(obj_func.n_params, n_objs=n_objs, model_class=[MaternModelBO], init_train_its=1000,
-#                        using_priors=False)
-#
-#
-# optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, acq_func, model=kernel, test_mode=False,
-#                            using_priors=False, n_evals_per_step=n_evals_per_step)'
 
 optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, using_priors=False,
                            n_evals_per_step=n_evals_per_step)

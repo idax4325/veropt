@@ -7,7 +7,7 @@ from veros.distributed import global_min, global_max
 import click
 import datetime
 
-from veropt import load_optimiser
+from veropt.obj_funcs.ocean_sims import load_data_to_sim
 
 
 class ACCSetup(VerosSetup):
@@ -165,13 +165,15 @@ def run(*args, **kwargs):
     global identifier
     global var_vals
 
-    identifier = kwargs["identifier"]
-    del kwargs["identifier"]
+    identifier, var_vals, kwargs = load_data_to_sim(kwargs)
 
-    optimiser_path = kwargs["optimiser"]
-    optimiser = load_optimiser(optimiser_path)
-    var_vals = optimiser.obj_func.loader_class.load_x_to_sim(identifier, optimiser.suggested_steps_filename)
-    del kwargs["optimiser"]
+    # identifier = kwargs["identifier"]
+    # del kwargs["identifier"]
+    #
+    # optimiser_path = kwargs["optimiser"]
+    # optimiser = load_optimiser(optimiser_path)
+    # var_vals = optimiser.obj_func.loader_class.load_x_to_sim(identifier, optimiser.suggested_steps_filename)
+    # del kwargs["optimiser"]
 
     simulation = ACCSetup(*args, **kwargs)
     simulation.setup()

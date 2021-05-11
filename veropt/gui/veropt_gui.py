@@ -47,6 +47,8 @@ class BayesOptWindow(QMainWindow):
 
     def connect_signals_to_slots(self):
         self.ui.pushButton_refit_kernel.clicked.connect(self.opt_worker.refit_model)
+        self.ui.pushButton_renormalise.clicked.connect(self.opt_worker.renormalise_model)
+
         self.ui.pushButton_run_opt_step.clicked.connect(self.opt_worker.do_opt_steps)
         self.ui.pushButton_suggest_point.clicked.connect(self.opt_worker.suggest_bayes_steps)
 
@@ -58,14 +60,14 @@ class BayesOptWindow(QMainWindow):
         self.ui.pushButton_plot_prediction.clicked.connect(self.plot_prediction)
         # self.ui.pushButton_plot_prediction_real_units.clicked.connect(self.plot_prediction_real_units)
         self.ui.pushButton_plot_progress.clicked.connect(self.optimiser.plot_progress)
-        self.ui.pushButton_plot_variables.clicked.connect(self.optimiser.plot_variable_values)
+        self.ui.pushButton_plot_pareto.clicked.connect(self.plot_pareto)
         self.ui.pushButton_close_plots.clicked.connect(self.optimiser.close_plots)
 
         self.ui.pushButton_save_points.clicked.connect(self.optimiser.save_suggested_steps)
         self.ui.pushButton_add_points.clicked.connect(self.optimiser.load_new_data)
 
         self.ui.pushButton_set_beta.clicked.connect(self.change_beta_val)
-        self.ui.pushButton_set_gamma.clicked.connect(self.change_gamma_val)
+        self.ui.pushButton_set_alpha.clicked.connect(self.change_alpha_val)
 
         self.ui.pushButton_save_optimiser.clicked.connect(self.optimiser.save_optimiser)
 
@@ -78,7 +80,7 @@ class BayesOptWindow(QMainWindow):
         self.update_length_scale_label()
         self.update_constraint_labels()
         self.update_beta_label()
-        self.update_gamma_label()
+        self.update_alpha_label()
         self.update_local_best_val()
 
     def update_buttons(self):
@@ -102,6 +104,9 @@ class BayesOptWindow(QMainWindow):
             self.ui.pushButton_plot_prediction.setDisabled(True)
             # self.ui.pushButton_plot_prediction_real_units.setDisabled(True)
             self.ui.pushButton_suggest_point.setDisabled(True)
+
+        if self.optimiser.n_objs == 1 or self.optimiser.n_objs > 3:
+            self.ui.pushButton_plot_pareto.setDisabled(True)
 
     def set_up_plot_pred_group(self):
 
@@ -216,23 +221,31 @@ class BayesOptWindow(QMainWindow):
         for var_ind in range(self.optimiser.n_params):
             self.optimiser.plot_prediction_real_units(var_ind)
 
+    def plot_pareto(self):
+        if self.optimiser.n_objs == 2:
+            self.optimiser.plot_pareto_front(0, 1)
+        elif self.optimiser.n_objs == 3:
+            self.optimiser.plot_pareto_front_3d(0, 1, 2)
+
     def update_beta_label(self):
         if 'beta' in self.optimiser.acq_func.params:
             self.ui.label_beta.setText(f"Beta: {self.optimiser.acq_func.params['beta']}")
         else:
             self.ui.label_beta.setText(f"Beta not used ")
+            self.ui.lineEdit_beta.setVisible(False)
             self.ui.pushButton_set_beta.setDisabled(True)
 
         self.ui.label_beta.repaint()
 
-    def update_gamma_label(self):
-        if 'gamma' in self.optimiser.acq_func.params:
-            self.ui.label_gamma.setText(f"Gamma: {self.optimiser.acq_func.params['gamma']}")
+    def update_alpha_label(self):
+        if 'alpha' in self.optimiser.acq_func.optimiser.params:
+            self.ui.label_alpha.setText(f"Alpha: {self.optimiser.acq_func.optimiser.params['alpha']}")
         else:
-            self.ui.label_gamma.setText(f"Gamma not used ")
-            self.ui.pushButton_set_gamma.setDisabled(True)
+            self.ui.label_alpha.setText(f"Alpha not used ")
+            self.ui.lineEdit_alpha.setVisible(False)
+            self.ui.pushButton_set_alpha.setDisabled(True)
 
-        self.ui.label_gamma.repaint()
+        self.ui.label_alpha.repaint()
 
     def change_beta_val(self):
         try:
@@ -245,15 +258,15 @@ class BayesOptWindow(QMainWindow):
         self.ui.lineEdit_beta.setText('')
         self.ui.lineEdit_beta.repaint()
 
-    def change_gamma_val(self):
+    def change_alpha_val(self):
         try:
-            new_val = float(self.ui.lineEdit_gamma.text())
-            self.optimiser.set_acq_func_params('gamma', new_val)
+            new_val = float(self.ui.lineEdit_alpha.text())
+            self.optimiser.set_acq_func_params('alpha', new_val)
             self.update_gamma_label()
         except ValueError:
             self.write_to_textfield("Invalid value encountered. The input must be a float.")
-        self.ui.lineEdit_gamma.setText('')
-        self.ui.lineEdit_gamma.repaint()
+        self.ui.lineEdit_alpha.setText('')
+        self.ui.lineEdit_alpha.repaint()
 
     def update_length_scale_label(self):
         for obj_no in range(self.optimiser.n_objs):
@@ -443,6 +456,14 @@ class OptWorker(QObject):
     def refit_model(self):
         self.working_signal.emit()
 
+        self.optimiser.refit_model()
+
+        self.finished_signal.emit()
+
+    def renormalise_model(self):
+        self.working_signal.emit()
+
+        self.optimiser.renormalise()
         self.optimiser.refit_model()
 
         self.finished_signal.emit()

@@ -458,6 +458,7 @@ class BayesOptModel:
     def train_backwards(self, its: int = None):
 
         running_on_slurm = "SLURM_JOB_ID" in os.environ
+        verbose = not running_on_slurm
 
         if its is None:
             its = self.train_its
@@ -469,12 +470,12 @@ class BayesOptModel:
             # loss = -self.mll(output, y)  # Calc loss and backprop gradients
             loss = -self.mll(output, self.model.train_targets)
             loss.backward()
-            if not running_on_slurm:
+            if verbose:
                 print("Training model... Iteration %d/%d - Loss: %.3f" % (train_it + 1, its, loss.item()), end="\r")
             self.loss_list.append(loss.item())
             self.optimiser.step()
 
-        if not running_on_slurm:
+        if verbose:
             print("\n")
 
     def plot_loss(self):

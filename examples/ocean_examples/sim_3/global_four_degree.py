@@ -9,6 +9,7 @@ from veros.variables import Variable
 import veros.tools
 
 import click
+from veropt.obj_funcs.ocean_sims import load_data_to_sim
 from veropt import load_optimiser
 
 BASE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -246,16 +247,18 @@ class GlobalFourDegreeSetup(VerosSetup):
 def run(*args, **kwargs):
 
     global identifier
-    identifier = kwargs["identifier"]
-    del kwargs["identifier"]
-
-    optimiser_path = kwargs["optimiser"]
-    optimiser = load_optimiser(optimiser_path)
-    del kwargs["optimiser"]
-
     global var_vals
 
-    var_vals = optimiser.obj_func.loader_class.load_x_to_sim(identifier, optimiser.suggested_steps_filename)
+    identifier, var_vals, kwargs = load_data_to_sim(kwargs)
+
+    # identifier = kwargs["identifier"]
+    # del kwargs["identifier"]
+    #
+    # optimiser_path = kwargs["optimiser"]
+    # optimiser = load_optimiser(optimiser_path)
+    # del kwargs["optimiser"]
+    #
+    # var_vals = optimiser.obj_func.loader_class.load_x_to_sim(identifier, optimiser.suggested_steps_filename)
 
     simulation = GlobalFourDegreeSetup(*args, **kwargs)
     simulation.setup()

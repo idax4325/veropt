@@ -1,7 +1,5 @@
 from veropt import BayesOptimiser
-from veropt.acq_funcs import *
 from veropt.obj_funcs.ocean_sims import OceanObjFunction
-from veropt.kernels import *
 from veropt.slurm_support import slurm_set_up
 
 
@@ -43,22 +41,6 @@ target_psi = 158.84593135989644 * 10**6
 measure_year = 200
 
 obj_func = OceanObjSimOne(target_psi, measure_year)
-
-# bounds = obj_func.bounds
-# n_objs = obj_func.n_objs
-# n_params = obj_func.n_params
-#
-# beta = 3.0
-# gamma = 0.01
-#
-# acq_func = PredefinedAcqFunction(bounds, n_objs=n_objs, n_evals_per_step=n_evals_per_step, acqfunc_name="UCB_Var",
-#                                  beta=beta, gamma=gamma)
-#
-# kernel = BayesOptModel(n_params, n_objs=n_objs, model_class_list=[MaternModelBO], init_train_its=1000)
-#
-# optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, acq_func, model=kernel,
-#                            n_evals_per_step=n_evals_per_step)
-
 
 optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, n_evals_per_step=n_evals_per_step)
 

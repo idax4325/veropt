@@ -1,6 +1,6 @@
 import sys
 # from subprocess import Popen, PIPE
-from veropt import ObjFunction
+from veropt import ObjFunction, load_optimiser
 import os
 import xarray as xr
 import re
@@ -26,65 +26,65 @@ class OceanObjFunction(ObjFunction):
                          var_names=var_names, obj_names=obj_names)
 
 
-class OceanObjSimOne(OceanObjFunction):
-    def __init__(self, target_mean_psi_sb, measure_year=200, file_path=None):
-        bounds = [500, 1500]
-        n_params = 1
-        n_objs = 1
-        var_names = ["kappa_gm_iso"]
-        obj_names = ["mean_psi_sb"]
+# class OceanObjSimOne(OceanObjFunction):
+#     def __init__(self, target_mean_psi_sb, measure_year=200, file_path=None):
+#         bounds = [500, 1500]
+#         n_params = 1
+#         n_objs = 1
+#         var_names = ["kappa_gm_iso"]
+#         obj_names = ["mean_psi_sb"]
+#
+#         self.target_mean_psi_sb = target_mean_psi_sb
+#         self.measure_year = measure_year
+#         self.file_path = file_path
+#
+#         param_dic = {
+#             "target_mean_psi_sb": target_mean_psi_sb,
+#             "measure_year": measure_year
+#         }
+#         filetype = "averages"
+#
+#         def calc_y(averages, param_dic):
+#             mean_psi_sb = float(averages["psi"][param_dic["measure_year"] - 1, 0].mean())
+#             y = - (mean_psi_sb - param_dic["target_mean_psi_sb"]) ** 2
+#             return y, mean_psi_sb
+#
+#         calc_y_method = (calc_y, filetype, param_dic)
+#
+#         super().__init__(bounds=bounds, n_params=n_params, n_objs=n_objs, calc_y_method=calc_y_method,
+#                          var_names=var_names, obj_names=obj_names, file_path=file_path)
 
-        self.target_mean_psi_sb = target_mean_psi_sb
-        self.measure_year = measure_year
-        self.file_path = file_path
 
-        param_dic = {
-            "target_mean_psi_sb": target_mean_psi_sb,
-            "measure_year": measure_year
-        }
-        filetype = "averages"
-
-        def calc_y(averages, param_dic):
-            mean_psi_sb = float(averages["psi"][param_dic["measure_year"] - 1, 0].mean())
-            y = - (mean_psi_sb - param_dic["target_mean_psi_sb"]) ** 2
-            return y, mean_psi_sb
-
-        calc_y_method = (calc_y, filetype, param_dic)
-
-        super().__init__(bounds=bounds, n_params=n_params, n_objs=n_objs, calc_y_method=calc_y_method,
-                         var_names=var_names, obj_names=obj_names, file_path=file_path)
-
-
-class OceanObjSimTwo(OceanObjFunction):
-    def __init__(self, target_min_vsf_depth_equator, measure_year=100, file_path=None):
-        bounds_lower = [500, 2e-6]
-        bounds_upper = [1500, 2e-4]
-        bounds = [bounds_lower, bounds_upper]
-        n_params = 2
-        n_objs = 1
-        var_names = ["kappa_gm", "kappa_min"]
-        obj_names = ["min_vsf_depth_equator"]
-
-        self.measure_year = measure_year
-        self.target_vsf_depth_min_equator = target_min_vsf_depth_equator
-
-        param_dic = {
-            "measure_year": measure_year,
-            "target_min_vsf_depth_equator": target_min_vsf_depth_equator
-        }
-        filetype = "overturning"
-
-        self.file_path = file_path
-
-        def calc_y(overturning, param_dic):
-            min_vsf_depth_eq = float(overturning["vsf_depth"].min("zw")[param_dic["measure_year"] - 1][20])
-            y = - (min_vsf_depth_eq - param_dic["target_min_vsf_depth_equator"])**2
-            return y, min_vsf_depth_eq
-
-        calc_y_method = (calc_y, filetype, param_dic)
-
-        super().__init__(bounds=bounds, n_params=n_params, n_objs=n_objs, calc_y_method=calc_y_method,
-                         var_names=var_names, obj_names=obj_names, file_path=file_path)
+# class OceanObjSimTwo(OceanObjFunction):
+#     def __init__(self, target_min_vsf_depth_equator, measure_year=100, file_path=None):
+#         bounds_lower = [500, 2e-6]
+#         bounds_upper = [1500, 2e-4]
+#         bounds = [bounds_lower, bounds_upper]
+#         n_params = 2
+#         n_objs = 1
+#         var_names = ["kappa_gm", "kappa_min"]
+#         obj_names = ["min_vsf_depth_equator"]
+#
+#         self.measure_year = measure_year
+#         self.target_vsf_depth_min_equator = target_min_vsf_depth_equator
+#
+#         param_dic = {
+#             "measure_year": measure_year,
+#             "target_min_vsf_depth_equator": target_min_vsf_depth_equator
+#         }
+#         filetype = "overturning"
+#
+#         self.file_path = file_path
+#
+#         def calc_y(overturning, param_dic):
+#             min_vsf_depth_eq = float(overturning["vsf_depth"].min("zw")[param_dic["measure_year"] - 1][20])
+#             y = - (min_vsf_depth_eq - param_dic["target_min_vsf_depth_equator"])**2
+#             return y, min_vsf_depth_eq
+#
+#         calc_y_method = (calc_y, filetype, param_dic)
+#
+#         super().__init__(bounds=bounds, n_params=n_params, n_objs=n_objs, calc_y_method=calc_y_method,
+#                          var_names=var_names, obj_names=obj_names, file_path=file_path)
 
 
 # class OceanObjSimThree(OceanObjFunction):
@@ -135,37 +135,36 @@ class OceanObjSimTwo(OceanObjFunction):
 #                          var_names=var_names, obj_names=obj_names, file_path=file_path)
 
 
-class OceanObjSimThreeTest(OceanObjFunction):
-    def __init__(self, target_min_vsf_depth_20N, measure_year=100, file_path=None):
-        bounds_lower = [500]
-        bounds_upper = [1500]
-        bounds = [bounds_lower, bounds_upper]
-        n_params = 1
-        n_objs = 1
-        var_names = ["kappa_iso"]
-        obj_names = ["min_vsf_depth_20N"]
-
-        self.measure_year = measure_year
-        self.target_min_vsf_depth_20N = target_min_vsf_depth_20N
-
-        param_dic = {
-            "measure_year": measure_year,
-            "target_min_vsf_depth_20N": target_min_vsf_depth_20N
-        }
-        filetype = "overturning"
-
-        self.file_path = file_path
-
-        def calc_y(overturning, param_dic):
-            min_vsf_depth_20N = float(overturning["vsf_depth"][param_dic["measure_year"]].min("zw")[25])
-            y = - (min_vsf_depth_20N - param_dic["target_min_vsf_depth_20N"]) ** 2
-            return y
-
-        calc_y_method = (calc_y, filetype, param_dic)
-
-        super().__init__(bounds=bounds, n_params=n_params, n_objs=n_objs, calc_y_method=calc_y_method,
-                         var_names=var_names, obj_names=obj_names, file_path=file_path)
-
+# class OceanObjSimThreeTest(OceanObjFunction):
+#     def __init__(self, target_min_vsf_depth_20N, measure_year=100, file_path=None):
+#         bounds_lower = [500]
+#         bounds_upper = [1500]
+#         bounds = [bounds_lower, bounds_upper]
+#         n_params = 1
+#         n_objs = 1
+#         var_names = ["kappa_iso"]
+#         obj_names = ["min_vsf_depth_20N"]
+#
+#         self.measure_year = measure_year
+#         self.target_min_vsf_depth_20N = target_min_vsf_depth_20N
+#
+#         param_dic = {
+#             "measure_year": measure_year,
+#             "target_min_vsf_depth_20N": target_min_vsf_depth_20N
+#         }
+#         filetype = "overturning"
+#
+#         self.file_path = file_path
+#
+#         def calc_y(overturning, param_dic):
+#             min_vsf_depth_20N = float(overturning["vsf_depth"][param_dic["measure_year"]].min("zw")[25])
+#             y = - (min_vsf_depth_20N - param_dic["target_min_vsf_depth_20N"]) ** 2
+#             return y
+#
+#         calc_y_method = (calc_y, filetype, param_dic)
+#
+#         super().__init__(bounds=bounds, n_params=n_params, n_objs=n_objs, calc_y_method=calc_y_method,
+#                          var_names=var_names, obj_names=obj_names, file_path=file_path)
 
 
 class SaverOceanSim:
@@ -324,3 +323,16 @@ class LoaderOceanSim:
 
         return new_x, new_y
 
+
+def load_data_to_sim(kwargs):
+
+    identifier = kwargs["identifier"]
+    del kwargs["identifier"]
+
+    optimiser_path = kwargs["optimiser"]
+    optimiser = load_optimiser(optimiser_path)
+    del kwargs["optimiser"]
+
+    var_vals = optimiser.obj_func.loader_class.load_x_to_sim(identifier, optimiser.suggested_steps_filename)
+
+    return identifier, var_vals, kwargs

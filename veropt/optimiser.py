@@ -8,6 +8,7 @@ import dill
 import datetime
 import torch
 import botorch
+from veropt.kernels import BayesOptModel
 
 
 class PriorClass:
@@ -72,9 +73,10 @@ class ObjFunction:
 
 class BayesOptimiser:
 
-    def __init__(self, n_init_points, n_bayes_points, obj_func: ObjFunction, acq_func: AcqFunction = None, model=None,
-                 obj_weights=None, using_priors=False, normalise=True, points_before_fitting=15, test_mode=False,
-                 n_evals_per_step=1, file_name=None, verbose=True, normaliser=None):
+    def __init__(self, n_init_points, n_bayes_points, obj_func: ObjFunction, acq_func: AcqFunction = None,
+                 model: BayesOptModel = None, obj_weights=None, using_priors=False, normalise=True,
+                 points_before_fitting=15, test_mode=False, n_evals_per_step=1, file_name=None, verbose=True,
+                 normaliser=None, renormalise_each_step=None):
 
         self.n_init_points = n_init_points
         self.n_bayes_points = n_bayes_points
@@ -132,6 +134,8 @@ class BayesOptimiser:
             self.model = model
 
         self.using_priors = using_priors
+        self.priors = None
+        self.prior_class = None
 
         if self.using_priors:
             self.stds = self.obj_func.stds
@@ -140,10 +144,7 @@ class BayesOptimiser:
         self.init_steps = None
         self.made_init_steps = False
 
-        # self.current_point = 0
         self.current_step = 0
-        # self.current_point = deepcopy(n_evals_per_step)
-        # self.current_step = 1
         self.points_evaluated = 0
         self.opt_mode = "init"
         self.data_fitted = False
@@ -165,8 +166,20 @@ class BayesOptimiser:
             if normaliser is None:
                 normaliser = preprocessing.StandardScaler
 
-            self.normaliser_x = normaliser()
-            self.normaliser_y = normaliser()
+            self.normaliser_class = normaliser
+
+            self.normaliser_x = None
+            self.normaliser_y = None
+
+            if renormalise_each_step is None:
+
+                if self.multi_obj:
+                    self.renormalise_each_step = True
+                else:
+                    self.renormalise_each_step = False
+
+            else:
+                self.renormalise_each_step = renormalise_each_step
 
         if file_name is None:
             self.file_name = "Optimiser_" + self.obj_func.__class__.__name__ + "_" + \
@@ -266,7 +279,7 @@ class BayesOptimiser:
             acq_func_args['best_f'] = self.obj_func_vals.max()
         elif self.acq_func.acqfunc_name == 'EHVI' or self.acq_func.acqfunc_name == 'qEHVI':
 
-            po_coords, po_vals = self.pareto_optimal_points()
+            po_coords, po_vals, _ = self.pareto_optimal_points()
 
             # nadir_point = po_vals.min(1)[0].squeeze().tolist()
 
@@ -343,6 +356,8 @@ class BayesOptimiser:
             warnings.warn(f"Imported {amount_evals} points but expected {self.n_evals_per_step}.")
 
         if self.data_fitted:
+            if self.renormalise_each_step:
+                self.renormalise()
             self.update_model()
 
         elif self.data_fitted is False and self.points_evaluated >= self.points_before_fitting:
@@ -461,32 +476,54 @@ class BayesOptimiser:
         else:
             self.opt_mode = "bayes"
 
-    def fit_normaliser(self):
-        # .fit might not actually do anything if it's StandardScaler
-        self.normaliser_x.fit(self.obj_func_coords.squeeze(0))
-        self.normaliser_y.fit(self.obj_func_vals.squeeze(0))
-
-        self.obj_func_coords = self.normaliser_x.transform(self.obj_func_coords.squeeze(0))
-        self.obj_func_coords = torch.tensor(self.obj_func_coords).unsqueeze(0)
-
-        self.obj_func_vals = self.normaliser_y.transform(self.obj_func_vals.squeeze(0))
-        self.obj_func_vals = torch.tensor(self.obj_func_vals).unsqueeze(0)
-
-    def init_normaliser(self):
+    def renormalise(self):
 
         if self.n_init_points > 0 and self.made_init_steps:
-            self.init_steps = self.normaliser_x.transform(self.init_steps.squeeze(0))
+            org_init_steps = self.normaliser_x.inverse_transform(self.init_steps.squeeze(0))
+            org_init_steps = torch.tensor(org_init_steps).unsqueeze(0)
+        else:
+            org_init_steps = None
+
+        self.fit_normaliser()
+        self.init_normaliser(init_steps=org_init_steps)
+
+    def fit_normaliser(self):
+        # .fit might not actually do anything if it's StandardScaler (but it might matter otherwise)
+
+        normaliser_x = self.normaliser_class()
+        normaliser_y = self.normaliser_class()
+
+        normaliser_x.fit(self.obj_func_coords_real_units().squeeze(0))
+        normaliser_y.fit(self.obj_func_vals_real_units().squeeze(0))
+
+        self.obj_func_coords = normaliser_x.transform(self.obj_func_coords_real_units().squeeze(0))
+        self.obj_func_coords = torch.tensor(self.obj_func_coords).unsqueeze(0)
+
+        self.obj_func_vals = normaliser_y.transform(self.obj_func_vals_real_units().squeeze(0))
+        self.obj_func_vals = torch.tensor(self.obj_func_vals).unsqueeze(0)
+
+        self.normaliser_x = normaliser_x
+        self.normaliser_y = normaliser_y
+
+    def init_normaliser(self, init_steps=None):
+
+        if self.n_init_points > 0 and self.made_init_steps:
+
+            if init_steps is None:
+                init_steps = self.init_steps
+
+            self.init_steps = self.normaliser_x.transform(init_steps.squeeze(0))
             self.init_steps = torch.tensor(self.init_steps).unsqueeze(0)
 
-        self.bounds = self.normaliser_x.transform(self.bounds)
+        self.bounds = self.normaliser_x.transform(self.obj_func.bounds)
         self.bounds = torch.tensor(self.bounds)
 
         if self.using_priors:
-            self.init_vals = self.normaliser_x.transform(self.init_vals)
+            self.init_vals = self.normaliser_x.transform(self.obj_func.init_vals)
             self.init_vals = torch.tensor(self.init_vals)
 
-            x1 = self.normaliser_x.transform(self.init_vals - self.stds)
-            x2 = self.normaliser_x.transform(self.init_vals + self.stds)
+            x1 = self.normaliser_x.transform(self.init_vals - self.obj_func.stds)
+            x2 = self.normaliser_x.transform(self.init_vals + self.obj_func.stds)
             self.stds = (x2 - x1) / 2
             self.stds = torch.tensor(self.stds)
 
@@ -656,8 +693,8 @@ class BayesOptimiser:
                         eval_point[index_wo_var_ind] - sugg_and_eval_coords[0, point_no, index_wo_var_ind]))
 
                 # alpha_values = torch.tensor(deepcopy(distances))
-                alpha_min = 0.2
-                alpha_max = 0.7
+                alpha_min = 0.1
+                alpha_max = 0.6
 
                 distances = torch.tensor(distances)
 
@@ -843,7 +880,7 @@ class BayesOptimiser:
             plt.show()
 
     # TODO: Update to support MO
-    def calculate_prediction_2d(self, var_0_ind, var_1_ind, in_real_units=False):
+    def calculate_prediction_3d(self, var_0_ind, var_1_ind, in_real_units=False):
         if self.suggested_steps is None or self.need_new_suggestions:
             eval_point = deepcopy(self.obj_func_coords[0, self.obj_func_vals.argmax()])
             # print("Plotting for the point with highest known value.")
@@ -893,12 +930,12 @@ class BayesOptimiser:
         return title, var_0_mat, var_1_mat, model_mean, model_lower_std, model_upper_std
 
     # TODO: Update to support MO
-    def plot_prediction_2d_real_units(self, var_0_ind, var_1_ind, plot_suggestions=False):
+    def plot_prediction_3d_real_units(self, var_0_ind, var_1_ind, plot_suggestions=False):
 
         self.model.set_eval()
 
         title, var_0_mat, var_1_mat, model_mean, model_lower_std, model_upper_std = \
-            self.calculate_prediction_2d(var_0_ind, var_1_ind, in_real_units=True)
+            self.calculate_prediction_3d(var_0_ind, var_1_ind, in_real_units=True)
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -924,7 +961,7 @@ class BayesOptimiser:
 
         self.model.set_train()
 
-    # TODO: Implement true obj value for multi_obj
+    # TODO: Implement true obj value for multi_obj (for test_mode)
     def plot_progress(self):
 
         plt.figure()
@@ -1012,6 +1049,116 @@ class BayesOptimiser:
         if self.data_fitted:
             self.model.set_train()
 
+    def plot_pareto_front(self, var_0_ind, var_1_ind):
+
+        _, pareto_optimal_vals, _ = self.pareto_optimal_points()
+
+        plt.figure()
+        plt.plot(self.obj_func_vals[0, :, var_0_ind], self.obj_func_vals[0, :, var_1_ind], '*',
+                 label="Dominated Points")
+        plt.plot(pareto_optimal_vals[0, :, var_0_ind], pareto_optimal_vals[0, :, var_1_ind], '*k',
+                 label="Pareto-Optimal Points")
+
+        if self.obj_func.obj_names is None:
+            obj_name_0 = "Objective 1"
+            obj_name_1 = "Objective 2"
+
+            if self.n_objs > 2:
+                remind = f" (out of {self.n_objs})"
+            else:
+                remind = ""
+
+            plt.title(f"Objectives {var_0_ind+1} and {var_1_ind+1}" + remind)
+        else:
+            obj_name_0 = self.obj_func.obj_names[var_0_ind]
+            obj_name_1 = self.obj_func.obj_names[var_1_ind]
+
+            if self.n_objs > 2:
+                remind = f" (out of {self.n_objs} objectives)"
+            else:
+                remind = ""
+
+            plt.title(f"Objectives {obj_name_0} and {obj_name_1}" + remind)
+
+        # TODO: Double check the uncertainties are right?
+        if self.need_new_suggestions is False:
+
+            for point_no in range(self.suggested_steps.shape[1]):
+
+                # suggested_step_np = self.suggested_steps[:, point_no].squeeze(0).detach().numpy()
+
+                if not self.test_mode:
+                    # expec_val = self.model.eval(suggested_steps[:, point_no])[obj_no]
+                    # lower, upper = expec_val.confidence_region()
+                    expec_val_list = self.model.eval(self.suggested_steps[:, point_no])
+                    lower = [0.0] * self.n_objs
+                    upper = [0.0] * self.n_objs
+                    for obj_no in range(self.n_objs):
+                        lower[obj_no], upper[obj_no] = expec_val_list[obj_no].confidence_region()
+
+                    if self.multi_obj:
+                        lower = torch.cat(lower, dim=1).detach().numpy()
+                        upper = torch.cat(upper, dim=1).detach().numpy()
+                        expec_val = torch.cat([val.loc for val in expec_val_list], dim=1).detach().numpy()
+
+                plt.errorbar(expec_val[0, var_0_ind], expec_val[0, var_1_ind],
+                             xerr=np.array([expec_val[0, var_0_ind] - lower[0, var_0_ind],
+                                            upper[0, var_0_ind] - expec_val[0, var_0_ind]]).reshape(2, 1),
+                             yerr=np.array([expec_val[0, var_1_ind] - lower[0, var_1_ind],
+                                            upper[0, var_1_ind] - expec_val[0, var_1_ind]]).reshape(2, 1),
+                             marker='*', color='firebrick', capsize=5, linewidth=1.0, alpha=0.5,
+                             label="Suggested Points" if point_no == 0 else "")
+
+        plt.xlabel(obj_name_0)
+        plt.ylabel(obj_name_1)
+
+        plt.legend(loc='lower left')
+
+    def plot_pareto_front_3d(self, var_0_ind, var_1_ind, var_2_ind):
+
+        _, pareto_optimal_vals, po_inds = self.pareto_optimal_points()
+
+        all_inds = np.arange(0, self.points_evaluated)
+        dominated_inds = np.delete(all_inds, po_inds)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        ax.scatter(self.obj_func_vals[0, dominated_inds, var_0_ind], self.obj_func_vals[0, dominated_inds, var_1_ind],
+                   self.obj_func_vals[0, dominated_inds, var_2_ind], label="Dominated Points")
+
+        ax.scatter(pareto_optimal_vals[0, :, var_0_ind], pareto_optimal_vals[0, :, var_1_ind],
+                   pareto_optimal_vals[0, :, var_2_ind], 'r', label="Pareto-Optimal Points")
+
+        if self.obj_func.obj_names is None:
+            obj_name_0 = "Objective 1"
+            obj_name_1 = "Objective 2"
+            obj_name_2 = "Objective 3"
+
+            if self.n_objs > 3:
+                remind = f" (out of {self.n_objs})"
+            else:
+                remind = ""
+
+            plt.title(f"Objectives {var_0_ind+1}, {var_1_ind+1} and {var_2_ind+1}" + remind)
+        else:
+            obj_name_0 = self.obj_func.obj_names[var_0_ind]
+            obj_name_1 = self.obj_func.obj_names[var_1_ind]
+            obj_name_2 = self.obj_func.obj_names[var_2_ind]
+
+            if self.n_objs > 3:
+                remind = f" (out of {self.n_objs} objectives)"
+            else:
+                remind = ""
+
+            plt.title(f"Objectives {obj_name_0}, {obj_name_1} and {obj_name_2}" + remind)
+
+        plt.legend()
+
+        plt.xlabel(obj_name_0)
+        plt.ylabel(obj_name_1)
+        ax.set_zlabel(obj_name_2)
+
     @staticmethod
     def close_plots():
         plt.close("all")
@@ -1090,16 +1237,23 @@ class BayesOptimiser:
             max_ind = np.flip(max_ind)
             pareto_optimal_ind = pareto_optimal_ind[max_ind]
 
-        return self.obj_func_coords[:, pareto_optimal_ind], self.obj_func_vals[:, pareto_optimal_ind]
+        return self.obj_func_coords[:, pareto_optimal_ind], self.obj_func_vals[:, pareto_optimal_ind], \
+               pareto_optimal_ind
 
     def obj_func_coords_real_units(self):
-        coords_not_normalised = self.normaliser_x.inverse_transform(self.obj_func_coords)
-        coords_not_normalised = torch.tensor(coords_not_normalised)
+        if self.normalise and self.data_fitted:
+            coords_not_normalised = self.normaliser_x.inverse_transform(self.obj_func_coords)
+            coords_not_normalised = torch.tensor(coords_not_normalised)
+        else:
+            coords_not_normalised = deepcopy(self.obj_func_coords)
         return coords_not_normalised
 
     def obj_func_vals_real_units(self):
-        vals_not_normalised = self.normaliser_y.inverse_transform(self.obj_func_vals)
-        vals_not_normalised = torch.tensor(vals_not_normalised)
+        if self.normalise and self.data_fitted:
+            vals_not_normalised = self.normaliser_y.inverse_transform(self.obj_func_vals)
+            vals_not_normalised = torch.tensor(vals_not_normalised)
+        else:
+            vals_not_normalised = deepcopy(self.obj_func_vals)
         return vals_not_normalised
 
     def bounds_real_units(self):
@@ -1117,7 +1271,11 @@ class BayesOptimiser:
     def save_optimiser(self, new_name=None):
 
         if new_name:
-            name = new_name
+            if '.pkl' in new_name:
+                name = new_name
+            else:
+                name = new_name + '.pkl'
+
         else:
             name = self.file_name
 
