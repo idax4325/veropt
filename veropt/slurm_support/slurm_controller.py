@@ -48,6 +48,38 @@ def cancel_jobs(job_name):
         scancel = subprocess.Popen(f"scancel {id}", shell=True)
 
 
+def start_jobs(suggested_step_filename, node_name, job_name):
+    # chosen_modi_node = "001"
+    # all_modi_nodes = ["000", "001", "002", "003", "004", "005", "006", "007"]
+    shell_script = "veros.sh"
+
+    spread_out = False
+
+    with open(suggested_step_filename, 'rb') as file:
+        suggested_steps_pd = dill.load(file)
+
+    no = 0
+    for identifier, row in suggested_steps_pd.iterrows():
+        # if spread_out:
+        #     modi_node = all_modi_nodes[no % 8]
+        # else:
+        #     modi_node = chosen_modi_node
+
+        # sbatch = subprocess.Popen(f"sbatch -w {node_name} {shell_script} "
+        #                           f"{int(identifier)} {optimiser_path}", shell=True)
+        sbatch = subprocess.Popen(f"sbatch -w {node_name} {shell_script} "
+                                  f"{int(identifier)}", shell=True)
+
+        no += 1
+
+    time.sleep(2 * 60)  # 2 (* 60 seconds) minutes
+
+    jobs_running = check_jobs_running(job_name)
+
+    if jobs_running is False:
+        raise Exception("Couldn't start jobs. Check slurm .out files.")
+
+
 @click.command()
 @click.option('--optimiser')
 @click.option('--job_name')
@@ -72,41 +104,21 @@ def run(*args, **kwargs):
                 suggested_step_filename = optimiser.run_opt_step()
                 optimiser.save_optimiser()
 
-                # chosen_modi_node = "001"
-                # all_modi_nodes = ["000", "001", "002", "003", "004", "005", "006", "007"]
-                shell_script = "veros.sh"
-
-                spread_out = False
-
-                with open(suggested_step_filename, 'rb') as file:
-                    suggested_steps_pd = dill.load(file)
-
-                no = 0
-                for identifier, row in suggested_steps_pd.iterrows():
-
-                    # if spread_out:
-                    #     modi_node = all_modi_nodes[no % 8]
-                    # else:
-                    #     modi_node = chosen_modi_node
-
-                    # sbatch = subprocess.Popen(f"sbatch -w {node_name} {shell_script} "
-                    #                           f"{int(identifier)} {optimiser_path}", shell=True)
-                    sbatch = subprocess.Popen(f"sbatch -w {node_name} {shell_script} "
-                                              f"{int(identifier)}", shell=True)
-
-                    no += 1
-
-                time.sleep(2 * 60)  # 2 (* 60 seconds) minutes
-
-                jobs_running = check_jobs_running(job_name)
-
-                if jobs_running is False:
-                    raise Exception("Couldn't start jobs. Check slurm .out files.")
+                start_jobs(suggested_step_filename, node_name, job_name)
 
             else:
+                # load_new_data updates the step but only if new data is actually added
                 optimiser.load_new_data()
-                optimiser.save_optimiser()
-                finished = True
+
+                if optimiser.current_step == optimiser.n_steps:
+
+                    optimiser.save_optimiser()
+                    finished = True
+
+                else:
+                    suggested_step_filename = optimiser.run_opt_step()
+                    optimiser.save_optimiser()
+                    start_jobs(suggested_step_filename, node_name, job_name)
 
         else:
 

@@ -32,26 +32,28 @@ class OceanObjSimOne(OceanObjFunction):
                          var_names=var_names, obj_names=obj_names, file_path=file_path)
 
 
-n_init_points = 8
-n_bayes_points = 24
+if __name__ == '__main__':
 
-n_evals_per_step = 8
+    n_init_points = 8
+    n_bayes_points = 24
 
-target_psi = 158.84593135989644 * 10**6
-measure_year = 200
+    n_evals_per_step = 8
 
-obj_func = OceanObjSimOne(target_psi, measure_year)
+    target_psi = 158.84593135989644 * 10**6
+    measure_year = 200
 
-optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, n_evals_per_step=n_evals_per_step)
+    obj_func = OceanObjSimOne(target_psi, measure_year)
 
-optimiser.save_optimiser()
+    optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, n_evals_per_step=n_evals_per_step)
+
+    optimiser.save_optimiser()
 
 
-slurm_set_up.set_up(
-    optimiser.file_name, ["modi_long", "modi_short"], "acc.py", make_new_slurm_controller=False,
-    using_singularity=True, image_path="~/modi_images/hpc-ocean-notebook_latest.sif", conda_env="python3")
+    slurm_set_up.set_up(
+        optimiser.file_name, ["modi_long", "modi_short"], "acc.py", make_new_slurm_controller=False,
+        using_singularity=True, image_path="~/modi_images/hpc-ocean-notebook_latest.sif", conda_env="python3")
 
-slurm_set_up.start_opt_run("modi002")
+    slurm_set_up.start_opt_run("modi002")
 
 
 

@@ -34,27 +34,36 @@ class OceanObjSimThree(OceanObjFunction):
         y = - (min_vsf_depth_20N - param_dic["target_min_vsf_depth_20N"])**2
         return y, min_vsf_depth_20N
 
+    @staticmethod
+    def calc_y_log(overturning, param_dic):
+        import numpy as np
+        min_vsf_depth_20N = float(overturning["vsf_depth"][param_dic["measure_year"] - 1].min("zw")[25])
+        y = - np.log((min_vsf_depth_20N - param_dic["target_min_vsf_depth_20N"]) ** 2)
+        return y, min_vsf_depth_20N
 
-n_init_points = 16
-n_bayes_points = 48
 
-n_evals_per_step = 8
+if __name__ == '__main__':
 
-measure_year = 100
-target_min_vsf_depth_20N = -15 * 10**6
+    n_init_points = 16
+    n_bayes_points = 48
 
-obj_func = OceanObjSimThree(target_min_vsf_depth_20N, measure_year=measure_year)
+    n_evals_per_step = 8
 
-optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, n_evals_per_step=n_evals_per_step)
+    measure_year = 100
+    target_min_vsf_depth_20N = -15 * 10**6
 
-optimiser.save_optimiser()
+    obj_func = OceanObjSimThree(target_min_vsf_depth_20N, measure_year=measure_year)
 
-# slurm_set_up.set_up(
-#     optimiser.file_name, ["modi_long", "modi_short"], "global_four_degree.py", make_new_slurm_controller=True,
-#     using_singularity=True, image_path="~/modi_images/hpc-ocean-notebook_latest.sif", conda_env="python3")
-#
-#
-# slurm_set_up.start_opt_run("modi001")
+    optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, n_evals_per_step=n_evals_per_step)
+
+    optimiser.save_optimiser()
+
+    # slurm_set_up.set_up(
+    #     optimiser.file_name, ["modi_long", "modi_short"], "global_four_degree.py", make_new_slurm_controller=True,
+    #     using_singularity=True, image_path="~/modi_images/hpc-ocean-notebook_latest.sif", conda_env="python3")
+    #
+    #
+    # slurm_set_up.start_opt_run("modi001")
 
 
 

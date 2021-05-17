@@ -261,8 +261,8 @@ class BayesOptWindow(QMainWindow):
     def change_alpha_val(self):
         try:
             new_val = float(self.ui.lineEdit_alpha.text())
-            self.optimiser.set_acq_func_params('alpha', new_val)
-            self.update_gamma_label()
+            self.optimiser.set_acq_func_opt_params('alpha', new_val)
+            self.update_alpha_label()
         except ValueError:
             self.write_to_textfield("Invalid value encountered. The input must be a float.")
         self.ui.lineEdit_alpha.setText('')

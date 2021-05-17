@@ -36,20 +36,22 @@ class OceanObjSimTwo(OceanObjFunction):
                          var_names=var_names, obj_names=obj_names, file_path=file_path)
 
 
-n_init_points = 8
-n_bayes_points = 40
+if __name__ == '__main__':
 
-n_evals_per_step = 8
+    n_init_points = 8
+    n_bayes_points = 40
 
-measure_year = 100
-target_vsf_depth_min_equator = -3200856.86124386
+    n_evals_per_step = 8
 
-obj_func = OceanObjSimTwo(target_vsf_depth_min_equator, measure_year=measure_year)
+    measure_year = 100
+    target_vsf_depth_min_equator = -3200856.86124386
 
-optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, using_priors=False,
-                           n_evals_per_step=n_evals_per_step)
+    obj_func = OceanObjSimTwo(target_vsf_depth_min_equator, measure_year=measure_year)
+
+    optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, using_priors=False,
+                               n_evals_per_step=n_evals_per_step)
 
 
-optimiser.save_optimiser()
+    optimiser.save_optimiser()
 
 

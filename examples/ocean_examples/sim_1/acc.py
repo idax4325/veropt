@@ -156,6 +156,7 @@ class ACCSetup(VerosSetup):
         pass
 
 
+@cli
 @click.option('--identifier', default=None, is_flag=False,
               help='Sets the identifier')
 @click.option('--optimiser', default=None, is_flag=False,

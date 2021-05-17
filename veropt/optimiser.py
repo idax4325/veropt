@@ -266,6 +266,8 @@ class BayesOptimiser:
             new_x, new_y = self.obj_func.loader()
             if new_y is not None:
                 self.add_new_points(new_x, new_y)
+            else:
+                print("No new points found! \n")
             # print(f"Loaded some points or something")
             # print("\n")
             # print("\n")
@@ -1262,7 +1264,16 @@ class BayesOptimiser:
         return bounds_not_normalised
 
     def set_acq_func_params(self, par_name, value):
-        self.acq_func.params[par_name] = value
+        self.acq_func.set_params(par_name, value)
+        # self.acq_func.params[par_name] = value
+
+        if self.data_fitted:
+            self.refresh_acq_func()
+            self.need_new_suggestions = True
+
+    def set_acq_func_opt_params(self, par_name, value):
+        self.acq_func.optimiser.set_params(par_name, value)
+        # self.acq_func.optimiser.params[par_name] = value
 
         if self.data_fitted:
             self.refresh_acq_func()

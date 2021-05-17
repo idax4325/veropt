@@ -311,7 +311,7 @@ class OptimiseWithDistPunish:
         proximity_punish = torch.tensor([0.0])
         scaling = acq_func_val * self.omega
         for point in other_points:
-            proximity_punish += scaling * torch.exp(-((torch.sum(x - point) / self.alpha) ** 2))
+            proximity_punish += scaling * torch.exp(-(torch.sum((x - point)**2) / (self.alpha**2)))
 
         return acq_func_val - proximity_punish
 
@@ -336,6 +336,9 @@ class AcqOptimiser:
 
     def optimise(self, acq_func):
         return self.function(acq_func)
+
+    def set_params(self, par_name, value):
+        self.params[par_name] = value
 
 
 class PredefinedAcqOptimiser(AcqOptimiser):
@@ -443,6 +446,16 @@ class PredefinedAcqOptimiser(AcqOptimiser):
 
         return candidates
 
+    def set_params(self, par_name, value):
+
+        self.params[par_name] = value
+
+        if par_name in ["alpha", "omega"]:
+            self.seq_optimiser.alpha = value
+
+        elif par_name is "omega":
+            self.seq_optimiser.omega = value
+
 
 class AcqFunction:
     def __init__(self, function_class, bounds, n_objs, optimiser: AcqOptimiser = None, params=None, n_evals_per_step=1,
@@ -484,6 +497,9 @@ class AcqFunction:
     def change_bounds(self, new_bounds):
         self.bounds = new_bounds
         self.optimiser.bounds = new_bounds
+
+    def set_params(self, par_name, value):
+        self.params[par_name] = value
 
 
 class PredefinedAcqFunction(AcqFunction):
