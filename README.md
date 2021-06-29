@@ -1,0 +1,80 @@
+
+# veropt
+
+## Bayesian Optimisation for the Versatile Ocean Simulator
+
+veropt is a Python package that aims to make Bayesian Optimisation easy to approach, inspect and adjust. It was developed for the Versatile Ocean Simulator ([VEROS](https://veros.readthedocs.io/en/latest/)) with the aim of providing a user-friendly optimisation tool to tune ocean simulations to real world data. 
+
+veropt can be used with any optimisation problem but has been developed for expensive optimisation problems with a small amount of evaluations (~100) and the default set-up will probably be most relevant in such a context.
+
+## Installation
+
+To install veropt with the default dependencies *and* the package utilised by the GUI (PySide2), do the following:
+
+```bash
+pip install veropt[gui]
+```
+
+Or, in an zsh terminal,
+
+```bash
+pip install "veropt[gui]"
+```
+
+If you're installing veropt on a cluster and don't need the GUI, you can simply do,
+
+```bash
+pip install veropt
+```
+
+##
+
+Please note that veropt depends on PyTorch. When installing a larger library like that, I would always recommend using anaconda over pip. To install PyTorch with anaconda, you can run,
+```bash
+conda install pytorch torchvision -c pytorch
+```
+
+If you want to be very safe and smart, consider creating a new conda environment before running the PyTorch installation.
+
+##
+
+If you ned to run a veropt *experiment* (only relevant when benchmarking an optimisation set-up against random search or comparing different set-ups) and you want to run it in parallel, you will need either pathos or mpi4py. The first-mentioned will be included by doing,
+
+```bash
+pip install veropt[multi_processing_smp]
+```
+This is recommended if you're running experiments on a laptop. If you're running experiments on a cluster, you will need mpi instead. Please note that mpi4py installations can be quite complex and it is probably advisable to do a manual installation before installing veropt. If you're feeling adventurous and want to see if pip can do it, you can run,
+
+```bash
+pip install veropt[mpi]
+```
+
+
+
+## Usage
+
+Below is a simple example of running an optimisation problem in veropt. 
+
+```python
+from veropt import BayesOptimiser
+from veropt.obj_funcs.test_functions import *
+from veropt.gui import veropt_gui
+
+n_init_points = 24
+n_bayes_points = 64
+n_evals_per_step = 4
+
+obj_func = PredefinedTestFunction("Hartmann")
+
+
+optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, n_evals_per_step=n_evals_per_step)
+
+veropt_gui.run(optimiser)
+```
+
+This example utilises one of the predefined test objective functions found in veropt.obj_funcs.test_functions. To use veropt with your own optimisation problem, you will need to create a class that uses the "ObjFunction" class from optimiser.py as a superclass. Your class must either include a method of running your objective function or a method for both saving parameter values and loading new objective function values.
+
+If you're using veropt for a veros simulation, take a look at the pre-defined objective function super class in veropt/obj_funcs/ocean_sims and the veros simulation examples under examples/ocean_examples.
+
+## License
+This project uses the [MIT](https://choosealicense.com/licenses/mit/) license.
