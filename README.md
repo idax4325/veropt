@@ -36,7 +36,7 @@ Please note that veropt depends on PyTorch. When installing a larger library lik
 conda install pytorch torchvision -c pytorch
 ```
 
-If you want to be very safe and smart, consider creating a new conda environment before running the PyTorch installation.
+You may also want to consider creating a new conda environment before running the PyTorch installation.
 
 ##
 
