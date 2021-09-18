@@ -23,7 +23,7 @@ Or, in an zsh terminal,
 pip install "veropt[gui]"
 ```
 
-If you're installing veropt on a cluster and don't need the GUI, you can simply do,
+If you're installing veropt on a cluster and don't need the GUI you can simply do,
 
 ```bash
 pip install veropt
@@ -31,7 +31,7 @@ pip install veropt
 
 ##
 
-Please note that veropt depends on PyTorch. When installing a larger library like that, I would always recommend using anaconda over pip. To install PyTorch with anaconda, you can run,
+Please note that veropt depends on PyTorch. When installing a larger library like that, I would usually recommend using anaconda over pip. To install PyTorch with anaconda, you can run,
 ```bash
 conda install pytorch torchvision -c pytorch
 ```
@@ -40,7 +40,7 @@ If you want to be very safe and smart, consider creating a new conda environment
 
 ##
 
-If you ned to run a veropt *experiment* (only relevant when benchmarking an optimisation set-up against random search or comparing different set-ups) and you want to run it in parallel, you will need either pathos or mpi4py. The first-mentioned will be included by doing,
+If you need to run a veropt *experiment* (only relevant when benchmarking an optimisation set-up against random search or comparing different set-ups) and you want to run it in parallel, you will need either pathos or mpi4py. The first-mentioned will be included by doing,
 
 ```bash
 pip install veropt[multi_processing_smp]
