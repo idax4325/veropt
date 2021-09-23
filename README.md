@@ -81,5 +81,27 @@ To use veropt with your own optimisation problem, you will need to create a clas
 
 If you're using veropt with a veros simulation, take a look at veropt/obj_funcs/ocean_sims and the veros simulation examples under examples/ocean_examples.
 
+## The GUI and the Visualisation Tools
+
+<img width="850" alt="GUI" src="https://user-images.githubusercontent.com/33256573/134529054-cfd9a3bb-8641-4cd2-8a11-fc6d7f794e1c.png">
+
+After running the command,
+
+
+```python
+veropt_gui.run(optimiser)
+```
+
+You should see a window like the one above. From here, you can show the progress of the optimisation, visualise the predictions of the GP model, change essential parameters of the model or acquisition function and much more. 
+
+##
+
+If you press "Plot predictions" in the GUI, you will encounter a plot like the one below. 
+
+<img width="700" alt="pred1" src="https://github.com/idax4325/veropt/files/7218616/BranninCurrinPrediction_wsust.pdf">
+
+It shows a slice of the function domain, along the axis of a chosen optimisation parameter. You will be able to inspect the model, the acquisition function, as well as the suggested points for the next round of objective function evaluations. If any of this isn't as desired, you simply close the figure and go back to the GUI to modify the optimisation by changing the relevant parameters.
+
 ## License
+
 This project uses the [MIT](https://choosealicense.com/licenses/mit/) license.
