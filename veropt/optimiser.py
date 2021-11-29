@@ -964,21 +964,26 @@ class BayesOptimiser:
         self.model.set_train()
 
     # TODO: Implement true obj value for multi_obj (for test_mode)
-    def plot_progress(self):
+    def plot_progress(self, in_real_units=True):
 
         plt.figure()
+
+        if in_real_units:
+            obj_func_vals = self.obj_func_vals_real_units()
+        else:
+            obj_func_vals = self.obj_func_vals
 
         if not self.multi_obj:
 
             if self.points_evaluated < self.n_init_points:
 
-                plt.plot(self.obj_func_vals[0, :self.points_evaluated], '.', label="Init points")
+                plt.plot(obj_func_vals[0, :self.points_evaluated], '.', label="Init points")
 
             else:
-                plt.plot(range(self.n_init_points), self.obj_func_vals[0, :self.n_init_points], '*b',
+                plt.plot(range(self.n_init_points), obj_func_vals[0, :self.n_init_points], '*b',
                          label="Init points")
                 plt.plot(range(self.n_init_points, self.points_evaluated),
-                         self.obj_func_vals[0, self.n_init_points: self.points_evaluated], '*', color='black',
+                         obj_func_vals[0, self.n_init_points: self.points_evaluated], '*', color='black',
                          label="Bayes points")
 
         else:
@@ -991,28 +996,28 @@ class BayesOptimiser:
 
                 if self.points_evaluated <= self.n_init_points:
 
-                    plt.plot(self.obj_func_vals[0, :self.points_evaluated, obj_no], marker='.', color=colours[obj_no],
+                    plt.plot(obj_func_vals[0, :self.points_evaluated, obj_no], marker='.', color=colours[obj_no],
                              linestyle='', label=f"Init points, {objective_name}", alpha=0.6)
                     if obj_no == 0:
-                        plt.plot((self.obj_func_vals * self.obj_weights).sum(2)[0, :self.points_evaluated],
+                        plt.plot((obj_func_vals * self.obj_weights).sum(2)[0, :self.points_evaluated],
                                  marker='h', color='black', linestyle='', label=f"Init points, summed",
                                  markersize=4)
 
                 else:
-                    plt.plot(range(self.n_init_points), self.obj_func_vals[0, :self.n_init_points, obj_no], marker='.',
+                    plt.plot(range(self.n_init_points), obj_func_vals[0, :self.n_init_points, obj_no], marker='.',
                              color=colours[obj_no], linestyle='',
                              label=f"Init points, {objective_name }", alpha=0.6)
                     plt.plot(range(self.n_init_points, self.points_evaluated),
-                             self.obj_func_vals[0, self.n_init_points: self.points_evaluated, obj_no], marker='P',
+                             obj_func_vals[0, self.n_init_points: self.points_evaluated, obj_no], marker='P',
                              markersize=4, color=colours[obj_no], linestyle='',
                              label=f"Bayes points, {objective_name }", alpha=0.6)
 
                     if obj_no == 0:
-                        plt.plot(range(self.n_init_points), (self.obj_func_vals * self.obj_weights).sum(2)
+                        plt.plot(range(self.n_init_points), (obj_func_vals * self.obj_weights).sum(2)
                                  [0, :self.n_init_points], marker='h', color='black', linestyle='',
                                  label=f"Init points, summed", markersize=4)
                         plt.plot(range(self.n_init_points, self.points_evaluated),
-                                 (self.obj_func_vals * self.obj_weights).sum(2)[0,
+                                 (obj_func_vals * self.obj_weights).sum(2)[0,
                                  self.n_init_points: self.points_evaluated], marker='p', markersize=4,
                                  color='black', linestyle='', label=f"Bayes points, summed")
 

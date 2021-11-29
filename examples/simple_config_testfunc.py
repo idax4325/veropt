@@ -16,6 +16,6 @@ obj_func = PredefinedFitTestFunction("sine_1param")
 
 optimiser = BayesOptimiser(n_init_points, n_bayes_points, obj_func, n_evals_per_step=n_evals_per_step)
 
-optimiser.run_all_opt_steps()
+# optimiser.run_all_opt_steps()
 
-# veropt_gui.run(optimiser)
+veropt_gui.run(optimiser)

@@ -6,6 +6,7 @@ from veropt import BayesOptimiser
 import sys
 from queue import Queue
 import torch
+import os
 
 
 class BayesOptWindow(QMainWindow):
@@ -509,6 +510,7 @@ def run(optimiser):
     sys.stdout = WriteStream(queue)
 
     window = BayesOptWindow(optimiser, opt_worker)
+    os.environ['QT_MAC_WANTS_LAYER'] = '1'
     window.show()
 
     write_thread = QThread()
