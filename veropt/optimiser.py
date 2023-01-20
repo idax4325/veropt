@@ -1121,6 +1121,8 @@ class BayesOptimiser:
 
         plt.legend(loc='lower left')
 
+        plt.show()
+
     def plot_pareto_front_3d(self, var_0_ind, var_1_ind, var_2_ind):
 
         _, pareto_optimal_vals, po_inds = self.pareto_optimal_points()
