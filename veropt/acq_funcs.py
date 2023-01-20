@@ -453,7 +453,7 @@ class PredefinedAcqOptimiser(AcqOptimiser):
         if par_name in ["alpha", "omega"]:
             self.seq_optimiser.alpha = value
 
-        elif par_name is "omega":
+        elif par_name == "omega":
             self.seq_optimiser.omega = value
 
 
