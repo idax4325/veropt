@@ -12,7 +12,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='veropt',
-    version='0.5.1',
+    version='0.5.2',
     packages=find_packages(),
     url='https://github.com/idax4325/veropt',
     license='OSI Approved :: MIT License',

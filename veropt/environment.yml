@@ -1,4 +1,4 @@
-name: veropt_8
+name: veropt
 dependencies:
   - python=3.9.2
   - numpy=1.21.2
