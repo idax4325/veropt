@@ -308,10 +308,12 @@ class OptimiseWithDistPunish:
         self.omega = omega
 
     def add_dist_punishment(self, x, acq_func_val, other_points):
-        proximity_punish = torch.tensor([0.0])
-        scaling = acq_func_val * self.omega
+
+        proximity_punish = 0.0
+        scaling = torch.abs(acq_func_val * self.omega)
         for point in other_points:
-            proximity_punish += scaling * torch.exp(-(torch.sum((x - point)**2) / (self.alpha**2)))
+            proximity_punish += scaling * np.exp(-(torch.sum((x - point)**2) / (self.alpha**2)))
+        proximity_punish = float(proximity_punish)
 
         return acq_func_val - proximity_punish
 
