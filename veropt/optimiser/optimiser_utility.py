@@ -265,7 +265,7 @@ class ReferencePointInputDict(TypedDict, total=False):
 @dataclass
 class ReferencePoint(SavableDataClass):
     variable_values: torch.Tensor
-    objective_values: torch.Tensor
+    objective_values: Optional[torch.Tensor]
     normalised: bool
 
     @classmethod
@@ -274,9 +274,11 @@ class ReferencePoint(SavableDataClass):
             saved_state: dict
     ) -> Self:
 
+        raw_objective_values = saved_state.get('objective_values')
+
         return cls(
             variable_values=torch.tensor(saved_state['variable_values']),
-            objective_values=torch.tensor(saved_state['objective_values']),
+            objective_values=torch.tensor(raw_objective_values) if raw_objective_values is not None else None,
             normalised=saved_state['normalised']
         )
 
@@ -567,6 +569,22 @@ def named_values_to_tensor(
     return (
         new_variable_values_tensor,
         new_objective_values_tensor
+    )
+
+
+def _named_variables_to_tensor(
+        variable_values: Mapping[str, Union[torch.Tensor, float]],
+        variable_names: list[str],
+) -> torch.Tensor:
+    """Convert a name→value dict to a [1, n_variables] tensor (variables only)."""
+    converted = _convert_to_tensors(
+        values=variable_values,
+        names=variable_names,
+        expected_amount_points=1
+    )
+    return torch.stack(
+        [converted[name] for name in variable_names],
+        dim=DataShape.index_dimensions
     )
 
 

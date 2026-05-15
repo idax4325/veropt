@@ -727,7 +727,8 @@ def build_table(
     reference_objective_values = None
     if optimiser.reference_point is not None:
         reference_variable_values = optimiser.reference_point.variable_values[0]
-        reference_objective_values = optimiser.reference_point.objective_values[0]
+        if optimiser.reference_point.objective_values is not None:
+            reference_objective_values = optimiser.reference_point.objective_values[0]
 
     return _build_table(
         variable_names=variable_names,

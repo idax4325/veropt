@@ -28,15 +28,15 @@ from veropt.optimiser.model import GPyTorchFullModel, AdamModelOptimiser
 # Constants
 # ---------------------------------------------------------------------------
 
-N_TRAIN   = 12
+N_TRAIN = 12
 NOISE_STD = 0.15   # applied both to observations and given to the GP
 
-FILL_COLOUR    = 'rgba(180, 180, 180, 0.35)'
+FILL_COLOUR = 'rgba(180, 180, 180, 0.35)'
 MEAN_NOISELESS = 'rgba(31,  119, 180, 1.0)'
-MEAN_NOISY     = 'rgba(214,  39,  40, 1.0)'
-C_TRUE         = 'rgba(80,   80,  80, 0.5)'
-C_TRAIN        = 'rgba(30,   30,  30, 0.85)'
-C_VLINE        = 'rgba(160, 160, 160, 0.45)'
+MEAN_NOISY = 'rgba(214,  39,  40, 1.0)'
+C_TRUE = 'rgba(80,   80,  80, 0.5)'
+C_TRAIN = 'rgba(30,   30,  30, 0.85)'
+C_VLINE = 'rgba(160, 160, 160, 0.45)'
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ def get_posterior(
     with torch.no_grad():
         posterior = gpytorch_model.likelihood(gpytorch_model(x))
     mean = posterior.mean.squeeze().numpy()
-    std  = posterior.variance.squeeze().sqrt().numpy()
+    std = posterior.variance.squeeze().sqrt().numpy()
     return mean, mean + std, mean - std
 
 
@@ -220,13 +220,13 @@ def build_figure(noise_std: float, n_train: int) -> go.Figure:
     print(f"Training noisy model (noise_std={noise_std}) ...")
     model_noisy = build_and_train_model(x_train, y_targets, noise_std_value=noise_std)
 
-    x_np       = x_grid.squeeze().numpy()
+    x_np = x_grid.squeeze().numpy()
     x_train_np = x_train.squeeze().numpy()
     y_train_np = y_targets.squeeze().numpy()
-    y_true_np  = torch.sin(torch.tensor(x_np) * 2 * torch.pi).numpy()
+    y_true_np = torch.sin(torch.tensor(x_np) * 2 * torch.pi).numpy()
 
     mean_nl, upper_nl, lower_nl = get_posterior(model_noiseless, x_grid)
-    mean_n,  upper_n,  lower_n  = get_posterior(model_noisy,     x_grid)
+    mean_n, upper_n, lower_n = get_posterior(model_noisy, x_grid)
 
     fig = make_subplots(
         rows=1,
@@ -241,16 +241,16 @@ def build_figure(noise_std: float, n_train: int) -> go.Figure:
 
     add_gp_band(fig, col=1, x=x_np, mean=mean_nl, upper=upper_nl, lower=lower_nl,
                 mean_colour=MEAN_NOISELESS, label="Noiseless")
-    add_gp_band(fig, col=2, x=x_np, mean=mean_n,  upper=upper_n,  lower=lower_n,
-                mean_colour=MEAN_NOISY,     label="Noisy")
+    add_gp_band(fig, col=2, x=x_np, mean=mean_n, upper=upper_n, lower=lower_n,
+                mean_colour=MEAN_NOISY, label="Noisy")
 
     for col in (1, 2):
         add_true_function(fig, x=x_np, y=y_true_np, col=col)
 
     # Noiseless panel: no error bars (no noise assumed)
-    add_observations(fig, x_train=x_train_np, y_train=y_train_np, noise_std=None,       col=1)
+    add_observations(fig, x_train=x_train_np, y_train=y_train_np, noise_std=None, col=1)
     # Noisy panel: error bars at ±noise_std
-    add_observations(fig, x_train=x_train_np, y_train=y_train_np, noise_std=noise_std,  col=2)
+    add_observations(fig, x_train=x_train_np, y_train=y_train_np, noise_std=noise_std, col=2)
 
     add_training_vlines(fig, x_train_np)
 
@@ -290,6 +290,3 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
-
-
-

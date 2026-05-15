@@ -175,5 +175,3 @@ class TestUncertainParetoFront:
             noise_std_per_objective=noise_std,
         )
         assert len(noisy_result['index']) == 2
-
-

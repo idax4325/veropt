@@ -18,6 +18,7 @@ from veropt.optimiser.optimiser_utility import (
     OptimiserSettings, OptimiserSettingsInputDict, ParetoOptimalPoints, ReferencePoint, ReferencePointInputDict,
     SuggestedPoints,
     named_values_to_tensor,
+    _named_variables_to_tensor,
     format_output_for_objective, get_best_points, get_pareto_optimal_points,
     list_with_floats_to_string, normalise_suggested_points, unnormalise_suggested_points
 )
@@ -156,13 +157,20 @@ class BayesianOptimiser(SavableClass):
 
         if reference_point is not None:
 
-            reference_variable_values, reference_objective_values = named_values_to_tensor(
-                new_variable_values=reference_point['variable_values'],
-                new_objective_values=reference_point['objective_values'],
+            reference_variable_values = _named_variables_to_tensor(
+                variable_values=reference_point['variable_values'],
                 variable_names=objective.variable_names,
-                objective_names=objective.objective_names,
-                expected_amount_points=1
             )
+
+            reference_objective_values: Optional[torch.Tensor] = None
+            if 'objective_values' in reference_point:
+                _, reference_objective_values = named_values_to_tensor(
+                    new_variable_values=reference_point['variable_values'],
+                    new_objective_values=reference_point['objective_values'],
+                    variable_names=objective.variable_names,
+                    objective_names=objective.objective_names,
+                    expected_amount_points=1
+                )
 
             reference_point_in_class = ReferencePoint(
                 variable_values=reference_variable_values,
@@ -564,13 +572,20 @@ class BayesianOptimiser(SavableClass):
             reference_point: ReferencePointInputDict,
     ) -> None:
 
-        reference_variable_values, reference_objective_values = named_values_to_tensor(
-            new_variable_values=reference_point['variable_values'],
-            new_objective_values=reference_point['objective_values'],
+        reference_variable_values = _named_variables_to_tensor(
+            variable_values=reference_point['variable_values'],
             variable_names=self.objective.variable_names,
-            objective_names=self.objective.objective_names,
-            expected_amount_points=1
         )
+
+        reference_objective_values: Optional[torch.Tensor] = None
+        if 'objective_values' in reference_point:
+            _, reference_objective_values = named_values_to_tensor(
+                new_variable_values=reference_point['variable_values'],
+                new_objective_values=reference_point['objective_values'],
+                variable_names=self.objective.variable_names,
+                objective_names=self.objective.objective_names,
+                expected_amount_points=1
+            )
 
         self.reference_point = ReferencePoint(
             variable_values=reference_variable_values,
@@ -732,7 +747,6 @@ class BayesianOptimiser(SavableClass):
         #     gpytorch.settings.observation_nan_policy._set_value('mask')
 
         pass
-
 
     def _reset_suggested_points(self) -> None:
 
@@ -1201,4 +1215,3 @@ class BayesianOptimiser(SavableClass):
         if self._normaliser_objectives is None:
             return noise_std_tensor
         return self._normaliser_objectives.transform_scale(noise_std_tensor)
-

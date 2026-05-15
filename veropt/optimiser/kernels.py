@@ -672,7 +672,6 @@ class SpectralDeltaKernel(GPyTorchSingleModel):
             train_targets: torch.Tensor,
     ) -> None:
 
-
         super().initialise_model_with_data(
             train_inputs=train_inputs,
             train_targets=train_targets,

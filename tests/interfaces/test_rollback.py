@@ -499,5 +499,3 @@ def test_experiment_can_continue_after_rollback() -> None:
         assert resumed_experiment.n_points_submitted > target_point, (
             "After resuming from rollback, new parameters should have been submitted."
         )
-
-

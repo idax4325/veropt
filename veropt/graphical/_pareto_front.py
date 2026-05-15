@@ -126,7 +126,6 @@ def _add_pareto_traces_2d(
     n_evaluated_points = objective_values.shape[DataShape.index_points]
     point_numbers = np.arange(n_evaluated_points).reshape(n_evaluated_points, 1)
 
-    pareto_point_numbers = point_numbers[pareto_optimal_indices]
     dominating_objective_values = objective_values[pareto_optimal_indices]
 
     if row is None and col is None:
@@ -163,7 +162,6 @@ def _add_pareto_traces_2d(
                 return f'rgba({r},{g},{b},{alpha})'
 
             pareto_set = set(pareto_optimal_indices)
-            all_indices = np.arange(n_evaluated_points)
             initial_non_pareto = [idx for idx in range(n_initial_points) if idx not in pareto_set]
             bayesian_non_pareto = [idx for idx in range(n_initial_points, n_evaluated_points) if idx not in pareto_set]
 
@@ -249,10 +247,14 @@ def _add_pareto_traces_2d(
             legendgroup='Initial points',
             showlegend=show_legend,
             marker={'symbol': 'diamond', 'color': color_scale[2]},
-            error_x=_make_error(float(noise_std_per_objective[objective_index_x]))
-                if noise_std_per_objective is not None else None,
-            error_y=_make_error(float(noise_std_per_objective[objective_index_y]))
-                if noise_std_per_objective is not None else None,
+            error_x=(
+                _make_error(float(noise_std_per_objective[objective_index_x]))
+                if noise_std_per_objective is not None else None
+            ),
+            error_y=(
+                _make_error(float(noise_std_per_objective[objective_index_y]))
+                if noise_std_per_objective is not None else None
+            ),
             customdata=_make_customdata(slice(None, n_initial_points)),
             hovertemplate=_hover_template("Point number"),
         ),
@@ -268,10 +270,14 @@ def _add_pareto_traces_2d(
             legendgroup='Bayesian points',
             showlegend=show_legend,
             marker={'color': color_evaluated_points},
-            error_x=_make_error(float(noise_std_per_objective[objective_index_x]))
-                if noise_std_per_objective is not None else None,
-            error_y=_make_error(float(noise_std_per_objective[objective_index_y]))
-                if noise_std_per_objective is not None else None,
+            error_x=(
+                _make_error(float(noise_std_per_objective[objective_index_x]))
+                if noise_std_per_objective is not None else None
+            ),
+            error_y=(
+                _make_error(float(noise_std_per_objective[objective_index_y]))
+                if noise_std_per_objective is not None else None
+            ),
             customdata=_make_customdata(slice(n_initial_points, None)),
             hovertemplate=_hover_template("Point number"),
         ),
@@ -350,7 +356,7 @@ def _add_pareto_traces_2d(
                     **row_col_info
                 )
 
-    if reference_point is not None:
+    if reference_point is not None and reference_point.objective_values is not None:
         figure.add_trace(
             go.Scatter(
                 x=[reference_point.objective_values[0, objective_index_x]],

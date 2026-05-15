@@ -39,7 +39,9 @@ def choose_plot_point(
         assert optimiser.suggested_points is not None, (
             "No active suggested points - cannot use 'suggested N' point selection."
         )
-        assert include_suggested_points, "include_suggested_points=False but point_selection references a suggested point"
+        assert include_suggested_points, (
+            "include_suggested_points=False but point_selection references a suggested point"
+        )
 
         parts = point_selection.split()
         assert len(parts) == 2 and parts[1].isdigit(), (
@@ -474,7 +476,7 @@ def _plot_prediction_grid(
                         row=row_no, col=col_no
                     )
 
-            if reference_point is not None:
+            if reference_point is not None and reference_point.objective_values is not None:
                 figure.add_trace(
                     go.Scatter(
                         x=[reference_point.variable_values[0, variable_index].item()],

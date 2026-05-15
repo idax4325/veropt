@@ -45,6 +45,3 @@ plot_pareto_front(
     plotted_objective_indices=[0, 1],
     uncertainty_style='error_bars',
 ).show()
-
-
-

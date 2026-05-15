@@ -14,7 +14,6 @@ from veropt.optimiser.optimiser_saver_loader import (
 )
 from veropt.optimiser.optimiser import BayesianOptimiser
 from veropt.optimiser.practice_objectives import Hartmann
-from veropt.optimiser.prediction import BotorchPredictor
 
 
 def _make_minimal_optimiser(n_initial_points: int = 4, verbose: bool = False) -> BayesianOptimiser:
@@ -102,8 +101,10 @@ def test_save_produces_current_schema_version(tmp_path: Path) -> None:
     assert saved.get('schema_version') == CURRENT_SCHEMA_VERSION
 
 
-def test_save_noise_fields_at_state_level_not_inside_settings(tmp_path: Path) -> None:
-    """After save, each kernel's noise fields must be at state level, not inside 'settings'."""
+def test_noise_fields_not_in_model_state(tmp_path: Path) -> None:
+    """In v4, noise and noise_lower_bound must NOT appear in model/kernel state.
+    train_noise is still present (controls whether the GP trains or freezes noise).
+    The physical noise values (noise_std etc.) live exclusively on the objective."""
 
     optimiser = _make_minimal_optimiser()
     save_path = str(tmp_path / "optimiser.json")
@@ -116,33 +117,33 @@ def test_save_noise_fields_at_state_level_not_inside_settings(tmp_path: Path) ->
         saved['optimiser']['predictor']['state']['model']['state']['model_dicts']
     )
 
-    noise_keys = {'noise', 'noise_lower_bound', 'train_noise'}
+    removed_noise_keys = {'noise', 'noise_lower_bound'}
 
     for model_key, model_dict in model_dicts.items():
         state = model_dict['state']
-        kernel_settings_keys = set(state['settings'].keys())
+        state_keys = set(state.keys())
+        settings_keys = set(state.get('settings', {}).keys())
 
-        assert not (noise_keys & kernel_settings_keys), (
-            f"Noise keys {noise_keys & kernel_settings_keys} still found inside 'settings' for {model_key}."
+        assert not (removed_noise_keys & state_keys), (
+            f"Noise keys {removed_noise_keys & state_keys} found at model state top-level for {model_key} — "
+            "they should only exist on the objective in v4."
         )
-        assert 'noise' in state, f"'noise' missing from state top-level for {model_key}."
-        assert 'train_noise' in state, f"'train_noise' missing from state top-level for {model_key}."
+        assert not (removed_noise_keys & settings_keys), (
+            f"Noise keys {removed_noise_keys & settings_keys} still found inside 'settings' for {model_key}."
+        )
 
 
-def test_round_trip_save_load_preserves_noise_settings(tmp_path: Path) -> None:
-    """Save → load must preserve noise values correctly."""
+def test_round_trip_save_load_preserves_train_noise(tmp_path: Path) -> None:
+    """Save → load must preserve the train_noise flag on the objective."""
 
-    custom_noise = 1e-5
+    objective = Hartmann(n_variables=3, train_noise=True)
     optimiser = bayesian_optimiser(
         n_initial_points=4,
         n_bayesian_points=8,
         n_evaluations_per_step=2,
-        objective=Hartmann(n_variables=3),
+        objective=objective,
         verbose=False,
-        model={
-            'training_settings': {'max_iter': 10},
-            'noise_settings': {'noise': custom_noise, 'noise_lower_bound': custom_noise},
-        },
+        model={'training_settings': {'max_iter': 10}},
         acquisition_optimiser={'optimiser': 'dual_annealing', 'optimiser_settings': {'max_iter': 10}}
     )
 
@@ -151,10 +152,7 @@ def test_round_trip_save_load_preserves_noise_settings(tmp_path: Path) -> None:
 
     loaded_optimiser = load_optimiser_from_state(save_path)
 
-    assert isinstance(loaded_optimiser.predictor, BotorchPredictor)
-    for kernel in loaded_optimiser.predictor.model._model_list:
-        assert kernel._noise_settings.noise == pytest.approx(custom_noise)
-        assert kernel._noise_settings.noise_lower_bound == pytest.approx(custom_noise)
+    assert loaded_optimiser.objective.train_noise is True
 
 
 # --- Migration unit tests ---
@@ -207,8 +205,10 @@ def test_migrate_json_creates_backup_and_updates_file(tmp_path: Path) -> None:
     model_0_state = (
         migrated['optimiser']['predictor']['state']['model']['state']['model_dicts']['model_0']['state']
     )
-    assert 'noise' in model_0_state
-    assert 'noise' not in model_0_state['settings']
+    # In v4, noise and noise_lower_bound are removed from model state; noise_std lives on the objective.
+    assert 'noise' not in model_0_state
+    assert 'noise_lower_bound' not in model_0_state
+    assert 'noise' not in model_0_state.get('settings', {})
 
 
 def test_load_v1_json_raises_without_allow_flag(tmp_path: Path) -> None:

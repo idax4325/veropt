@@ -1,8 +1,7 @@
 import pytest
-import torch
 
 from veropt import bayesian_optimiser
-from veropt.optimiser.kernels import MaternKernel, DoubleMaternKernel
+from veropt.optimiser.kernels import MaternKernel
 from veropt.optimiser.practice_objectives import Hartmann
 
 

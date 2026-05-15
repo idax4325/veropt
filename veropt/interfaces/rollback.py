@@ -408,7 +408,3 @@ def _verify_rollback(
         f"  ✓ Verification passed: state has {expected_state_points} points, "
         f"optimiser has {expected_optimiser_points} points."
     )
-
-
-
-

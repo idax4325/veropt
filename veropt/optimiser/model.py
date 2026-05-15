@@ -220,7 +220,8 @@ class GPyTorchSingleModel(SavableClass, metaclass=abc.ABCMeta):
         """Set the numerical-floor noise constraint and initial near-zero noise value.
         Called automatically from _set_up_model_constraints — not to be called directly from kernels."""
         self.set_noise_constraint(lower_bound=_NOISE_CONSTRAINT_FLOOR)
-        self.set_noise(_NOISE_CONSTRAINT_FLOOR)  # near-zero default; overwritten by _apply_physical_noise if noise_std is set
+        # Near-zero default; overwritten by _apply_physical_noise if noise_std is set.
+        self.set_noise(_NOISE_CONSTRAINT_FLOOR)
 
     def initialise_model_with_data(
             self,

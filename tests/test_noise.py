@@ -23,7 +23,6 @@ from veropt.optimiser.constructors import bayesian_optimiser, botorch_acquisitio
 from veropt.optimiser.kernels import MaternKernel
 from veropt.optimiser.model import GPyTorchFullModel
 from veropt.optimiser.normalisation import NormaliserZeroMeanUnitVariance
-from veropt.optimiser.objective import Objective
 from veropt.optimiser.optimiser import BayesianOptimiser
 from veropt.optimiser.optimiser_saver_loader import save_to_json, load_optimiser_from_state
 from veropt.optimiser.practice_objectives import Hartmann, VehicleSafety, DTLZ1
@@ -249,9 +248,8 @@ class TestApplyPhysicalNoise:
         assert abs(lower_bound - _NOISE_CONSTRAINT_FLOOR) < 1e-12
 
     def test_apply_physical_noise_below_floor_raises(self) -> None:
-        """noise_std so small that its variance falls below _NOISE_CONSTRAINT_FLOOR must raise."""
+        """noise_std so small that its variance falls below _NOISE_CONSTRAINT_FLOOR (1e-8) must raise."""
         model = self._make_trained_full_model()
-        from veropt.optimiser.model import _NOISE_CONSTRAINT_FLOOR
         # std = 1e-5 → variance = 1e-10, which is below _NOISE_CONSTRAINT_FLOOR = 1e-8
         tiny_noise_std = torch.tensor([1e-5])
         with pytest.raises(AssertionError, match="numerical floor"):
@@ -661,7 +659,9 @@ class TestTrainNoiseWithBoundsReload:
 
         assert isinstance(loaded.predictor, BotorchPredictor)
         for single_model in loaded.predictor.model._model_list:
-            constraint = single_model.model_with_data.likelihood.noise_covar.raw_noise_constraint  # type: ignore[union-attr]
+            constraint = (
+                single_model.model_with_data.likelihood.noise_covar.raw_noise_constraint  # type: ignore[union-attr]
+            )
 
             assert isinstance(constraint, Interval), (
                 f"Expected Interval constraint after reload with bounds, got {type(constraint).__name__}"
@@ -704,7 +704,8 @@ class TestTrainNoiseWithBoundsReload:
         # Record the trained noise before saving
         assert isinstance(optimiser.predictor, BotorchPredictor)
         trained_noise = float(
-            optimiser.predictor.model._model_list[0].model_with_data.likelihood.noise.detach()  # type: ignore[union-attr]
+            optimiser.predictor.model._model_list[0].model_with_data.likelihood.noise  # type: ignore[union-attr]
+            .detach()
         )
 
         optimiser.settings.allow_automatic_json_updates = True
@@ -934,7 +935,8 @@ class TestV3MigrationNoiseSafety:
         from veropt.optimiser.model import _NOISE_CONSTRAINT_FLOOR
         for single_model in loaded.predictor.model._model_list:
             actual_lower_bound = float(
-                single_model.model_with_data.likelihood.noise_covar.raw_noise_constraint.lower_bound  # type: ignore[union-attr]
+                single_model.model_with_data.likelihood.noise_covar  # type: ignore[union-attr]
+                .raw_noise_constraint.lower_bound
             )
             assert abs(actual_lower_bound - _NOISE_CONSTRAINT_FLOOR) < 1e-12, (
                 f"Constraint lower_bound after v3 migration should be _NOISE_CONSTRAINT_FLOOR "
@@ -1022,24 +1024,3 @@ class TestV3MigrationNoiseSafety:
                 f"Second reload (v4 → v4) gave wrong noise: expected {expected_variance:.2e}, "
                 f"got {actual_noise:.2e} (relative error {relative_error:.1%})"
             )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
