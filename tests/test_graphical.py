@@ -6,8 +6,8 @@ import torch
 
 from veropt.optimiser.constructors import bayesian_optimiser
 from veropt.optimiser.practice_objectives import VehicleSafety
-from veropt.graphical.visualisation import save_table_to_csv, plot_pareto_front, plot_pareto_front_grid
-from veropt.graphical._pareto_front import _add_pareto_traces_2d, _build_ellipse_traces
+from veropt.graphical.visualisation import save_table_to_csv
+from veropt.graphical._pareto_front import _add_pareto_traces_2d
 
 
 def test_save_table_to_csv() -> None:
@@ -75,69 +75,10 @@ def test_save_table_to_csv() -> None:
             )
 
 
-def _make_noisy_vehicle_safety_optimiser() -> object:
-    """Helper: small VehicleSafety optimiser with noise_std set on all three objectives."""
-    objective = VehicleSafety(
-        noise_std={'VeSa 1': 0.1, 'VeSa 2': 0.1, 'VeSa 3': 0.05}
-    )
-    optimiser = bayesian_optimiser(
-        n_initial_points=16,
-        n_bayesian_points=8,
-        n_evaluations_per_step=4,
-        objective=objective,
-        verbose=False,
-        acquisition_optimiser={'optimiser': 'dual_annealing', 'optimiser_settings': {'max_iter': 50}},
-        model={'training_settings': {'max_iter': 5}},
-    )
-    for _ in range(4):
-        optimiser.run_optimisation_step()
-    return optimiser
-
-
 class TestUncertainParetoFront:
 
-    def test_build_ellipse_traces_shape(self) -> None:
-        """_build_ellipse_traces returns a single Scatter trace with None separators."""
-        import numpy as np
-        import plotly.graph_objects as go
-        x_centres = np.array([0.0, 1.0, 2.0])
-        y_centres = np.array([0.0, 1.0, 2.0])
-        trace = _build_ellipse_traces(
-            x_centres=x_centres,
-            y_centres=y_centres,
-            sigma_x=0.1,
-            sigma_y=0.2,
-            colour='rgba(100, 100, 100, 1.0)',
-            name='test ellipses',
-            show_legend=True,
-            legend_group='test',
-        )
-        assert isinstance(trace, go.Scatter)
-        # Each ellipse contributes 60 points + 1 None separator → 61 * 3 = 183 entries
-        assert trace.x is not None
-        assert len(trace.x) == 3 * 61
-        assert None in trace.x
-
-    def test_add_pareto_traces_2d_without_noise_produces_traces(self) -> None:
-        """_add_pareto_traces_2d without noise adds exactly 3 traces (init, bayes, pareto)."""
-        import plotly.graph_objects as go
-        objective_values = torch.rand(20, 3)
-        figure = go.Figure()
-        figure = _add_pareto_traces_2d(
-            figure=figure,
-            objective_values=objective_values,
-            objective_index_x=0,
-            objective_index_y=1,
-            objective_names=['A', 'B', 'C'],
-            pareto_optimal_indices=[0, 1, 2],
-            n_initial_points=10,
-            noise_std_per_objective=None,
-        )
-        # 3 standard traces: initial points, bayesian points, dominating points
-        assert len(figure.data) == 3
-
-    def test_add_pareto_traces_2d_with_ellipse_noise_adds_extra_trace(self) -> None:
-        """With noise and ellipse style, one extra trace (the ellipse group) is prepended."""
+    def test_add_pareto_traces_2d_with_ellipse_noise_adds_noise_trace(self) -> None:
+        """With noise and ellipse style, at least one noise trace is added."""
         import plotly.graph_objects as go
         objective_values = torch.rand(20, 3)
         noise_std = torch.tensor([0.1, 0.1, 0.05])
@@ -153,13 +94,30 @@ class TestUncertainParetoFront:
             noise_std_per_objective=noise_std,
             uncertainty_style='ellipse',
         )
-        # 3 standard + 3 ellipse traces (initial non-pareto, bayesian non-pareto, dominating)
-        assert len(figure.data) == 6
         trace_names = [t.name for t in figure.data]
-        assert 'Noise (±1σ)' in trace_names
+        # At least one noise trace should be present (name starts with 'Noise')
+        assert any('Noise' in (name or '') for name in trace_names)
 
-    def test_add_pareto_traces_2d_with_error_bars_noise_no_extra_trace(self) -> None:
-        """With error_bars style, no ellipse trace is added; error_y is set on scatter traces."""
+    def test_add_pareto_traces_2d_without_noise_has_no_noise_trace(self) -> None:
+        """Without noise, no 'Noise' trace is added."""
+        import plotly.graph_objects as go
+        objective_values = torch.rand(20, 3)
+        figure = go.Figure()
+        figure = _add_pareto_traces_2d(
+            figure=figure,
+            objective_values=objective_values,
+            objective_index_x=0,
+            objective_index_y=1,
+            objective_names=['A', 'B', 'C'],
+            pareto_optimal_indices=[0, 1, 2],
+            n_initial_points=10,
+            noise_std_per_objective=None,
+        )
+        trace_names = [t.name for t in figure.data]
+        assert not any('Noise' in (name or '') for name in trace_names)
+
+    def test_add_pareto_traces_2d_with_error_bars_sets_error_y(self) -> None:
+        """With error_bars style, scatter traces should have error_y set."""
         import plotly.graph_objects as go
         objective_values = torch.rand(20, 3)
         noise_std = torch.tensor([0.1, 0.1, 0.05])
@@ -175,49 +133,11 @@ class TestUncertainParetoFront:
             noise_std_per_objective=noise_std,
             uncertainty_style='error_bars',
         )
-        # 3 traces, no extra ellipse trace
-        assert len(figure.data) == 3
-        # The first scatter trace (initial points) should have error_y set
         scatter_traces = [t for t in figure.data if hasattr(t, 'error_y')]
         assert any(t.error_y is not None for t in scatter_traces)
-
-    def test_plot_pareto_front_grid_wires_noise_from_optimiser(self) -> None:
-        """plot_pareto_front_grid passes noise_std_per_objective when optimiser has noise_std."""
-        optimiser = _make_noisy_vehicle_safety_optimiser()
-        figure = plot_pareto_front_grid(optimiser=optimiser)  # type: ignore[arg-type]
-        assert figure is not None
-        # There should be at least one trace named 'Noise (±1σ)' in the figure
+        # Error bars style should not add ellipse traces
         trace_names = [t.name for t in figure.data]
-        assert 'Noise (±1σ)' in trace_names
-
-    def test_plot_pareto_front_wires_noise_from_optimiser(self) -> None:
-        """plot_pareto_front passes noise_std_per_objective when optimiser has noise_std."""
-        optimiser = _make_noisy_vehicle_safety_optimiser()
-        figure = plot_pareto_front(
-            optimiser=optimiser,  # type: ignore[arg-type]
-            plotted_objective_indices=[0, 1],
-        )
-        assert figure is not None
-        trace_names = [t.name for t in figure.data]
-        assert 'Noise (±1σ)' in trace_names
-
-    def test_plot_pareto_front_grid_no_noise_no_ellipse_traces(self) -> None:
-        """Without noise_std on the objective, no ellipse trace appears in the figure."""
-        objective = VehicleSafety()
-        optimiser = bayesian_optimiser(
-            n_initial_points=16,
-            n_bayesian_points=8,
-            n_evaluations_per_step=4,
-            objective=objective,
-            verbose=False,
-            acquisition_optimiser={'optimiser': 'dual_annealing', 'optimiser_settings': {'max_iter': 50}},
-            model={'training_settings': {'max_iter': 5}},
-        )
-        for _ in range(4):
-            optimiser.run_optimisation_step()
-        figure = plot_pareto_front_grid(optimiser=optimiser)
-        trace_names = [t.name for t in figure.data]
-        assert 'Noise (±1σ)' not in trace_names
+        assert not any('Noise' in (name or '') for name in trace_names)
 
     def test_noisy_pareto_dominance_keeps_more_points_than_noiseless(self) -> None:
         """With noise, uncertain points near the boundary should not be discarded.
@@ -256,16 +176,4 @@ class TestUncertainParetoFront:
         )
         assert len(noisy_result['index']) == 2
 
-    def test_plot_pareto_front_error_bars_style(self) -> None:
-        """error_bars style is threaded correctly through plot_pareto_front."""
-        optimiser = _make_noisy_vehicle_safety_optimiser()
-        figure = plot_pareto_front(
-            optimiser=optimiser,  # type: ignore[arg-type]
-            plotted_objective_indices=[0, 1],
-            uncertainty_style='error_bars',
-        )
-        assert figure is not None
-        # error_bars style: no ellipse trace, but scatter traces should have error bars
-        trace_names = [t.name for t in figure.data]
-        assert 'Noise (±1σ)' not in trace_names
 

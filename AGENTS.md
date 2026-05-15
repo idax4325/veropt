@@ -223,6 +223,22 @@ python local_workflows/linting.py
 
 8. **JSON Schema Versioning**: Saved optimiser JSON files carry a `schema_version` integer. The current version is defined as `CURRENT_SCHEMA_VERSION` in `optimiser_saver_loader.py`. When making changes that alter the JSON structure, increment the version and add a `_migrate_vX_to_vY` function. Migration runs automatically when `allow_automatic_json_updates=True` (creates a `.bak` before writing).
 
+9. **API Surface Audit on Ownership-Shifting Refactors**: When a refactor moves where a
+   concept *lives* (e.g. noise configuration moving from kernel settings to `objective.noise_std`),
+   explicitly audit whether the old location's fields are still meaningful. Fields that existed
+   to approximate what the new mechanism now provides properly should be removed or deprecated
+   **in the same PR** — not left as dead/misleading knobs.
+
+   Checklist when shifting concept ownership:
+   - Does each old field still have a unique, clearly-defined purpose in the new architecture?
+   - Is it expressed in units the user can actually reason about (e.g. physical, not normalised)?
+   - Would a user who doesn't know the internal history be confused by seeing it?
+   - If answers are no/yes: remove it, or add an assert that raises if set to a non-default value.
+
+   Example: `noise` and `noise_lower_bound` in `NoiseSettingsInputDict` were valid when noise
+   lived entirely in kernel config. After V1 noise added `noise_std` on the objective (physical
+   units), these became dead/misleading and should have been removed in the same PR.
+
 ## Changelog Reports
 
 For significant changes, detailed implementation notes live in `changelog_reports/<version>/`.

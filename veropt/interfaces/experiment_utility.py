@@ -115,6 +115,9 @@ class ExperimentConfig(Config):
     run_script_root_directory: Optional[str] = None
     output_filename: str
     noise_std: Optional[dict[str, float]] = None
+    noise_std_min: Optional[dict[str, float]] = None
+    noise_std_max: Optional[dict[str, float]] = None
+    train_noise: bool = False
 
 
 class PathManager:
@@ -239,7 +242,10 @@ class ExperimentObjective(InterfaceObjective):
             objective_names: list[str],
             suggested_parameters_json: str,
             evaluated_objectives_json: str,
-            noise_std: Optional[dict[str, float]] = None
+            noise_std: Optional[dict[str, float]] = None,
+            noise_std_min: Optional[dict[str, float]] = None,
+            noise_std_max: Optional[dict[str, float]] = None,
+            train_noise: bool = False
     ):
 
         self.suggested_parameters_json = suggested_parameters_json
@@ -252,7 +258,10 @@ class ExperimentObjective(InterfaceObjective):
             n_objectives=n_objectives,
             variable_names=variable_names,
             objective_names=objective_names,
-            noise_std=noise_std
+            noise_std=noise_std,
+            noise_std_min=noise_std_min,
+            noise_std_max=noise_std_max,
+            train_noise=train_noise
         )
 
     def save_candidates(
@@ -302,5 +311,8 @@ class ExperimentObjective(InterfaceObjective):
             objective_names=saved_state["objective_names"],
             suggested_parameters_json=saved_state["suggested_parameters_json"],
             evaluated_objectives_json=saved_state["evaluated_objectives_json"],
-            noise_std=saved_state.get("noise_std", None)
+            noise_std=saved_state.get("noise_std", None),
+            noise_std_min=saved_state.get("noise_std_min", None),
+            noise_std_max=saved_state.get("noise_std_max", None),
+            train_noise=saved_state.get("train_noise", False),
         )

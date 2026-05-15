@@ -18,7 +18,10 @@ class BotorchPracticeObjective(CallableObjective, metaclass=abc.ABCMeta):
             function: botorch.test_functions.base.BaseTestProblem,
             variable_names: Optional[list[str]] = None,
             objective_names: Optional[list[str]] = None,
-            noise_std: Optional[dict[str, float]] = None
+            noise_std: Optional[dict[str, float]] = None,
+            noise_std_min: Optional[dict[str, float]] = None,
+            noise_std_max: Optional[dict[str, float]] = None,
+            train_noise: bool = False
     ):
 
         variable_names = variable_names or [f"var_{i}" for i in range(1, n_variables + 1)]
@@ -33,7 +36,10 @@ class BotorchPracticeObjective(CallableObjective, metaclass=abc.ABCMeta):
             n_objectives=n_objectives,
             variable_names=variable_names,
             objective_names=objective_names,
-            noise_std=noise_std
+            noise_std=noise_std,
+            noise_std_min=noise_std_min,
+            noise_std_max=noise_std_max,
+            train_noise=train_noise
         )
 
     def _run(self, parameter_values: torch.Tensor) -> torch.Tensor:
@@ -48,7 +54,10 @@ class Hartmann(BotorchPracticeObjective):
     def __init__(
             self,
             n_variables: Literal[3, 4, 6],
-            noise_std: Optional[dict[str, float]] = None
+            noise_std: Optional[dict[str, float]] = None,
+            noise_std_min: Optional[dict[str, float]] = None,
+            noise_std_max: Optional[dict[str, float]] = None,
+            train_noise: bool = False
     ):
 
         assert n_variables in [3, 4, 6]
@@ -64,7 +73,10 @@ class Hartmann(BotorchPracticeObjective):
             n_objectives=n_objectives,
             function=function,
             objective_names=['Hartmann'],
-            noise_std=noise_std
+            noise_std=noise_std,
+            noise_std_min=noise_std_min,
+            noise_std_max=noise_std_max,
+            train_noise=train_noise
         )
 
     @classmethod
@@ -74,7 +86,10 @@ class Hartmann(BotorchPracticeObjective):
     ) -> Self:
         return cls(
             n_variables=saved_state['n_variables'],
-            noise_std=saved_state.get('noise_std', None)
+            noise_std=saved_state.get('noise_std', None),
+            noise_std_min=saved_state.get('noise_std_min', None),
+            noise_std_max=saved_state.get('noise_std_max', None),
+            train_noise=saved_state.get('train_noise', False),
         )
 
 
@@ -84,7 +99,10 @@ class VehicleSafety(BotorchPracticeObjective):
 
     def __init__(
             self,
-            noise_std: Optional[dict[str, float]] = None
+            noise_std: Optional[dict[str, float]] = None,
+            noise_std_min: Optional[dict[str, float]] = None,
+            noise_std_max: Optional[dict[str, float]] = None,
+            train_noise: bool = False
     ) -> None:
         n_variables = 5
         n_objectives = 3
@@ -98,7 +116,10 @@ class VehicleSafety(BotorchPracticeObjective):
             n_objectives=n_objectives,
             function=function,
             objective_names=objective_names,
-            noise_std=noise_std
+            noise_std=noise_std,
+            noise_std_min=noise_std_min,
+            noise_std_max=noise_std_max,
+            train_noise=train_noise
         )
 
     @classmethod
@@ -107,7 +128,10 @@ class VehicleSafety(BotorchPracticeObjective):
             saved_state: dict
     ) -> Self:
         return cls(
-            noise_std=saved_state.get('noise_std', None)
+            noise_std=saved_state.get('noise_std', None),
+            noise_std_min=saved_state.get('noise_std_min', None),
+            noise_std_max=saved_state.get('noise_std_max', None),
+            train_noise=saved_state.get('train_noise', False),
         )
 
 
@@ -119,7 +143,10 @@ class DTLZ1(BotorchPracticeObjective):
             self,
             n_variables: int = 10,
             n_objectives: int = 5,
-            noise_std: Optional[dict[str, float]] = None
+            noise_std: Optional[dict[str, float]] = None,
+            noise_std_min: Optional[dict[str, float]] = None,
+            noise_std_max: Optional[dict[str, float]] = None,
+            train_noise: bool = False
     ):
 
         function = botorch.test_functions.DTLZ1(
@@ -137,7 +164,10 @@ class DTLZ1(BotorchPracticeObjective):
             n_objectives=n_objectives,
             function=function,
             objective_names=objective_names,
-            noise_std=noise_std
+            noise_std=noise_std,
+            noise_std_min=noise_std_min,
+            noise_std_max=noise_std_max,
+            train_noise=train_noise
         )
 
     @classmethod
@@ -148,5 +178,8 @@ class DTLZ1(BotorchPracticeObjective):
         return cls(
             n_variables=saved_state['n_variables'],
             n_objectives=saved_state['n_objectives'],
-            noise_std=saved_state.get('noise_std', None)
+            noise_std=saved_state.get('noise_std', None),
+            noise_std_min=saved_state.get('noise_std_min', None),
+            noise_std_max=saved_state.get('noise_std_max', None),
+            train_noise=saved_state.get('train_noise', False),
         )

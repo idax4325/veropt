@@ -20,7 +20,10 @@ class Objective(SavableClass, metaclass=abc.ABCMeta):
             n_objectives: int,
             variable_names: list[str],
             objective_names: list[str],
-            noise_std: Optional[dict[str, float]] = None
+            noise_std: Optional[dict[str, float]] = None,
+            noise_std_min: Optional[dict[str, float]] = None,
+            noise_std_max: Optional[dict[str, float]] = None,
+            train_noise: bool = False
     ):
         assert len(bounds_lower) == n_variables
         assert len(bounds_upper) == n_variables
@@ -32,12 +35,48 @@ class Objective(SavableClass, metaclass=abc.ABCMeta):
         self.variable_names = variable_names
         self.objective_names = objective_names
 
-        if noise_std is not None:
-            assert set(noise_std.keys()) == set(objective_names), (
-                f"noise_std keys {set(noise_std.keys())} must match objective_names {set(objective_names)}."
+        self.noise_std = noise_std
+        self.noise_std_min = noise_std_min
+        self.noise_std_max = noise_std_max
+        self.train_noise = train_noise
+
+        self._validate_noise_configuration()
+
+    def _validate_noise_configuration(self) -> None:
+        if self.noise_std is not None:
+            assert set(self.noise_std.keys()) == set(self.objective_names), (
+                f"noise_std keys {set(self.noise_std.keys())} must match objective_names {set(self.objective_names)}."
             )
 
-        self.noise_std = noise_std
+        if self.noise_std is not None and self.train_noise:
+            raise ValueError(
+                "noise_std pins the noise to a fixed physical value. "
+                "train_noise=True would attempt to learn it simultaneously — these cannot be combined.\n"
+                "  • Use noise_std alone if you know your measurement noise (e.g. noise_std={'obj': 0.05}).\n"
+                "  • Use train_noise=True alone (optionally with noise_std_min/noise_std_max) if you want "
+                "the model to learn the noise level from the data."
+            )
+
+        if (self.noise_std_min is not None or self.noise_std_max is not None) and not self.train_noise:
+            raise ValueError(
+                "noise_std_min and noise_std_max bound the noise level during learning, so they require "
+                "train_noise=True (the GP optimizer learns what noise is consistent with the data). "
+                "With train_noise=False (default), the noise is fixed and there is nothing to bound.\n"
+                "  • Add train_noise=True to use bounds, or\n"
+                "  • Remove noise_std_min/noise_std_max and use noise_std to fix the noise to an exact value."
+            )
+
+        if self.noise_std_min is not None:
+            assert set(self.noise_std_min.keys()) == set(self.objective_names), (
+                f"noise_std_min keys {set(self.noise_std_min.keys())} must match "
+                f"objective_names {set(self.objective_names)}."
+            )
+
+        if self.noise_std_max is not None:
+            assert set(self.noise_std_max.keys()) == set(self.objective_names), (
+                f"noise_std_max keys {set(self.noise_std_max.keys())} must match "
+                f"objective_names {set(self.objective_names)}."
+            )
 
     def get_bounds(
             self,
@@ -63,6 +102,9 @@ class Objective(SavableClass, metaclass=abc.ABCMeta):
                 'variable_names': self.variable_names,
                 'objective_names': self.objective_names,
                 'noise_std': self.noise_std,
+                'noise_std_min': self.noise_std_min,
+                'noise_std_max': self.noise_std_max,
+                'train_noise': self.train_noise,
             }
         }
 

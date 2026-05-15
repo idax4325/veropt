@@ -3,7 +3,7 @@ from typing import TypedDict, Unpack, Mapping, Any, Optional, Self, Union, Liter
 
 import gpytorch
 import torch
-from veropt.optimiser.model import GPyTorchSingleModel, NoiseSettingsInputDict, change_interval_constraints
+from veropt.optimiser.model import GPyTorchSingleModel, change_interval_constraints
 from veropt.optimiser.saver_loader_utility import SavableDataClass
 from veropt.optimiser.utility import _validate_typed_dict
 
@@ -59,7 +59,7 @@ class MaternKernel(GPyTorchSingleModel):
     def __init__(
             self,
             n_variables: int,
-            noise_settings: Optional[NoiseSettingsInputDict] = None,
+            train_noise: bool = False,
             **settings: Unpack[MaternParametersInputDict]
     ):
 
@@ -80,7 +80,7 @@ class MaternKernel(GPyTorchSingleModel):
             mean_module=mean_module,
             kernel=kernel,
             n_variables=n_variables,
-            noise_settings=noise_settings
+            train_noise=train_noise
         )
 
     @classmethod
@@ -88,7 +88,7 @@ class MaternKernel(GPyTorchSingleModel):
             cls,
             n_variables: int,
             settings: Mapping[str, Any],
-            noise_settings: Optional[NoiseSettingsInputDict] = None
+            train_noise: bool = False
     ) -> 'MaternKernel':
 
         _validate_typed_dict(
@@ -99,7 +99,7 @@ class MaternKernel(GPyTorchSingleModel):
 
         return cls(
             n_variables=n_variables,
-            noise_settings=noise_settings,
+            train_noise=train_noise,
             **settings
         )
 
@@ -142,7 +142,7 @@ class DoubleMaternKernel(GPyTorchSingleModel):
     def __init__(
             self,
             n_variables: int,
-            noise_settings: Optional[NoiseSettingsInputDict] = None,
+            train_noise: bool = False,
             **settings: Unpack[DoubleMaternParametersInputDict]
     ):
 
@@ -172,7 +172,7 @@ class DoubleMaternKernel(GPyTorchSingleModel):
             mean_module=mean_module,
             kernel=kernel,
             n_variables=n_variables,
-            noise_settings=noise_settings
+            train_noise=train_noise
         )
 
     @classmethod
@@ -180,7 +180,7 @@ class DoubleMaternKernel(GPyTorchSingleModel):
             cls,
             n_variables: int,
             settings: Mapping[str, Any],
-            noise_settings: Optional[NoiseSettingsInputDict] = None
+            train_noise: bool = False
     ) -> 'DoubleMaternKernel':
 
         _validate_typed_dict(
@@ -191,7 +191,7 @@ class DoubleMaternKernel(GPyTorchSingleModel):
 
         return cls(
             n_variables=n_variables,
-            noise_settings=noise_settings,
+            train_noise=train_noise,
             **settings
         )
 
@@ -257,7 +257,7 @@ class RationalQuadraticKernel(GPyTorchSingleModel):
     def __init__(
             self,
             n_variables: int,
-            noise_settings: Optional[NoiseSettingsInputDict] = None,
+            train_noise: bool = False,
             **settings: Unpack[RQParametersInputDict]
     ):
 
@@ -276,7 +276,7 @@ class RationalQuadraticKernel(GPyTorchSingleModel):
             mean_module=mean_module,
             kernel=kernel,
             n_variables=n_variables,
-            noise_settings=noise_settings
+            train_noise=train_noise
         )
 
     @classmethod
@@ -284,7 +284,7 @@ class RationalQuadraticKernel(GPyTorchSingleModel):
             cls,
             n_variables: int,
             settings: Mapping[str, Any],
-            noise_settings: Optional[NoiseSettingsInputDict] = None
+            train_noise: bool = False
     ) -> Self:
 
         _validate_typed_dict(
@@ -295,7 +295,7 @@ class RationalQuadraticKernel(GPyTorchSingleModel):
 
         return cls(
             n_variables=n_variables,
-            noise_settings=noise_settings,
+            train_noise=train_noise,
             **settings
         )
 
@@ -389,7 +389,7 @@ class RationalQuadraticMaternKernel(GPyTorchSingleModel):
     def __init__(
             self,
             n_variables: int,
-            noise_settings: Optional[NoiseSettingsInputDict] = None,
+            train_noise: bool = False,
             **settings: Unpack[RQMaternParametersInputDict]
     ):
 
@@ -418,7 +418,7 @@ class RationalQuadraticMaternKernel(GPyTorchSingleModel):
             mean_module=mean_module,
             kernel=kernel,
             n_variables=n_variables,
-            noise_settings=noise_settings
+            train_noise=train_noise
         )
 
     @classmethod
@@ -426,7 +426,7 @@ class RationalQuadraticMaternKernel(GPyTorchSingleModel):
             cls,
             n_variables: int,
             settings: Mapping[str, Any],
-            noise_settings: Optional[NoiseSettingsInputDict] = None
+            train_noise: bool = False
     ) -> Self:
 
         _validate_typed_dict(
@@ -437,7 +437,7 @@ class RationalQuadraticMaternKernel(GPyTorchSingleModel):
 
         return cls(
             n_variables=n_variables,
-            noise_settings=noise_settings,
+            train_noise=train_noise,
             **settings
         )
 
@@ -529,7 +529,7 @@ class SpectralMixtureKernel(GPyTorchSingleModel):
     def __init__(
             self,
             n_variables: int,
-            noise_settings: Optional[NoiseSettingsInputDict] = None,
+            train_noise: bool = False,
             **settings: Unpack[SMKParametersInputDict]
     ):
 
@@ -549,7 +549,7 @@ class SpectralMixtureKernel(GPyTorchSingleModel):
             mean_module=mean_module,
             kernel=kernel,
             n_variables=n_variables,
-            noise_settings=noise_settings
+            train_noise=train_noise
         )
 
     @classmethod
@@ -557,7 +557,7 @@ class SpectralMixtureKernel(GPyTorchSingleModel):
             cls,
             n_variables: int,
             settings: Mapping[str, Any],
-            noise_settings: Optional[NoiseSettingsInputDict] = None
+            train_noise: bool = False
     ) -> Self:
 
         _validate_typed_dict(
@@ -568,7 +568,7 @@ class SpectralMixtureKernel(GPyTorchSingleModel):
 
         return cls(
             n_variables=n_variables,
-            noise_settings=noise_settings,
+            train_noise=train_noise,
             **settings
         )
 
@@ -613,7 +613,7 @@ class SpectralDeltaKernel(GPyTorchSingleModel):
     def __init__(
             self,
             n_variables: int,
-            noise_settings: Optional[NoiseSettingsInputDict] = None,
+            train_noise: bool = False,
             **settings: Unpack[SpectralDeltaParametersInputDict]
     ):
 
@@ -637,7 +637,7 @@ class SpectralDeltaKernel(GPyTorchSingleModel):
             mean_module=mean_module,
             kernel=kernel,
             n_variables=n_variables,
-            noise_settings=noise_settings
+            train_noise=train_noise
         )
 
     @classmethod
@@ -645,7 +645,7 @@ class SpectralDeltaKernel(GPyTorchSingleModel):
             cls,
             n_variables: int,
             settings: Mapping[str, Any],
-            noise_settings: Optional[NoiseSettingsInputDict] = None
+            train_noise: bool = False
     ) -> Self:
 
         _validate_typed_dict(
@@ -656,7 +656,7 @@ class SpectralDeltaKernel(GPyTorchSingleModel):
 
         return cls(
             n_variables=n_variables,
-            noise_settings=noise_settings,
+            train_noise=train_noise,
             **settings
         )
 

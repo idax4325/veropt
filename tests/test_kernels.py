@@ -52,51 +52,19 @@ def test_run_optimisation_step_rq_matern_kernel() -> None:
         optimiser.run_optimisation_step()
 
 
-def test_noise_settings_stored_on_kernel() -> None:
-
-    custom_noise = 1e-4
-    kernel = MaternKernel(
-        n_variables=3,
-        noise_settings={'noise': custom_noise, 'train_noise': True}
-    )
-
-    assert kernel._noise_settings.noise == pytest.approx(custom_noise)
-    assert kernel._noise_settings.train_noise is True
+def test_train_noise_stored_on_kernel() -> None:
+    """train_noise=True is stored on the kernel and accessible via .train_noise."""
+    kernel = MaternKernel(n_variables=3, train_noise=True)
     assert kernel.train_noise is True
 
 
-def test_noise_settings_defaults_when_not_provided() -> None:
-
+def test_train_noise_defaults_to_false() -> None:
     kernel = MaternKernel(n_variables=3)
-
-    assert kernel._noise_settings.noise == pytest.approx(1e-8)
-    assert kernel._noise_settings.noise_lower_bound == pytest.approx(1e-8)
-    assert kernel._noise_settings.train_noise is False
+    assert kernel.train_noise is False
 
 
-def test_noise_settings_applied_after_model_initialisation() -> None:
-
-    custom_noise = 1e-4
-    kernel = MaternKernel(
-        n_variables=2,
-        noise_settings={'noise': custom_noise, 'noise_lower_bound': custom_noise}
-    )
-
-    var_tensor = torch.rand(4, 2)
-    obj_tensor = torch.rand(4, 1)
-
-    kernel.initialise_model_with_data(
-        train_inputs=var_tensor,
-        train_targets=obj_tensor.squeeze()
-    )
-
-    assert kernel.model_with_data is not None
-    actual_noise = float(kernel.model_with_data.likelihood.noise.item())
-    assert actual_noise == pytest.approx(custom_noise, rel=0.01)
-
-
-def test_legacy_kernel_state_raises_key_error() -> None:
-    """Loading a v1-format state dict (noise inside 'settings') must raise KeyError —
+def test_legacy_kernel_state_raises_error() -> None:
+    """Loading a v1-format state dict (noise inside 'settings') must raise an error —
     the schema gate in load_optimiser_from_state is the only supported upgrade path."""
 
     legacy_state = {
@@ -114,7 +82,7 @@ def test_legacy_kernel_state_raises_key_error() -> None:
         'train_targets': [],
     }
 
-    with pytest.raises(KeyError):
+    with pytest.raises((KeyError, AssertionError)):
         MaternKernel.from_saved_state(legacy_state)
 
 

@@ -356,7 +356,10 @@ class Experiment:
             objective_names=result_processor.objective_names,
             suggested_parameters_json=path_manager.suggested_parameters_json,
             evaluated_objectives_json=path_manager.evaluated_objectives_json,
-            noise_std=experiment_config.noise_std
+            noise_std=experiment_config.noise_std,
+            noise_std_min=experiment_config.noise_std_min,
+            noise_std_max=experiment_config.noise_std_max,
+            train_noise=experiment_config.train_noise,
         )
 
         if isinstance(optimiser_config, str):

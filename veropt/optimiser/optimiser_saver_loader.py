@@ -12,7 +12,7 @@ from veropt.optimiser.utility import get_arguments_of_function
 # Loaded so it is known by load_optimiser_from_state
 from veropt.interfaces.experiment_utility import ExperimentObjective  # noqa: F401
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 def save_to_json(
@@ -152,6 +152,9 @@ def migrate_json(file_path: str) -> None:
     if schema_version < 3:
         saved_dict = _migrate_v2_to_v3(saved_dict)
 
+    if schema_version < 4:
+        saved_dict = _migrate_v3_to_v4(saved_dict)
+
     with open(file_path_with_json, 'w') as json_file:
         json.dump(saved_dict, json_file, cls=TensorsAsListsEncoder, indent=2)
 
@@ -194,6 +197,49 @@ def _migrate_v2_to_v3(saved_dict: dict) -> dict:
             and isinstance(train_inputs[0], list)
         ):
             model_dicts[model_key]['state']['train_inputs'] = train_inputs[0]
+
+    saved_dict['schema_version'] = CURRENT_SCHEMA_VERSION
+
+    return saved_dict
+
+
+def _migrate_v3_to_v4(saved_dict: dict) -> dict:
+    """Move train_noise from the model state to the objective state. Remove noise and noise_lower_bound
+    from the model state — these are now derived at training time from objective.noise_std.
+
+    train_noise is copied from the first single-model's state dict into the objective state.
+    The objective gains noise_std_min and noise_std_max (both None, newly introduced fields)."""
+
+    try:
+        model_dicts = (
+            saved_dict
+            ['optimiser']
+            ['predictor']
+            ['state']
+            ['model']
+            ['state']
+            ['model_dicts']
+        )
+        objective_state = saved_dict['optimiser']['objective']['state']
+    except KeyError as missing_key:
+        raise RuntimeError(
+            f"Could not migrate JSON: unexpected structure. Missing key: {missing_key}. "
+            "This file may already be in a non-standard format."
+        ) from missing_key
+
+    # Extract train_noise from the first model (all models share the same value)
+    first_model_state = next(iter(model_dicts.values()))['state']
+    train_noise = first_model_state.get('train_noise', False)
+
+    # Remove the now-redundant noise/noise_lower_bound fields from every model state
+    for model_key in model_dicts:
+        model_dicts[model_key]['state'].pop('noise', None)
+        model_dicts[model_key]['state'].pop('noise_lower_bound', None)
+
+    # Add the new noise fields to the objective
+    objective_state['train_noise'] = train_noise
+    objective_state.setdefault('noise_std_min', None)
+    objective_state.setdefault('noise_std_max', None)
 
     saved_dict['schema_version'] = CURRENT_SCHEMA_VERSION
 

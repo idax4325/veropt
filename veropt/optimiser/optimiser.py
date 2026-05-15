@@ -82,7 +82,6 @@ class BayesianOptimiser(SavableClass):
 
         self._verify_set_up()
         self._set_up_settings()
-        self._check_noise_configuration()
 
     def __repr__(self) -> str:
         return (
@@ -299,7 +298,6 @@ class BayesianOptimiser(SavableClass):
         )
 
         if optimiser.model_has_been_trained:
-            optimiser._check_noise_desync_on_reload()
             optimiser._update_predictor(
                 train=False
             )
@@ -735,71 +733,6 @@ class BayesianOptimiser(SavableClass):
 
         pass
 
-    def _check_noise_desync_on_reload(self) -> None:
-        """Raise ValueError if the noise value stored in the model (loaded from JSON) does not
-        match the expected noise computed from objective.noise_std.
-
-        This guards against users manually editing the kernel noise in the JSON: such a change
-        would be silently overwritten by _apply_physical_noise, so instead we fail loudly so
-        the user knows their edit had no effect and understands where noise is controlled.
-
-        Called from from_saved_state before _update_predictor(train=False)."""
-
-        if self.objective.noise_std is None:
-            return
-
-        if not hasattr(self.predictor, 'model') or not hasattr(self.predictor.model, '_model_list'):
-            return
-
-        expected_noise_model_space = self._noise_std_in_model_space
-        if expected_noise_model_space is None:
-            return
-
-        # Relative tolerance: 2 % covers normalisation rounding but catches manual edits.
-        relative_tolerance = 0.02
-
-        for objective_index, (objective_name, single_model) in enumerate(
-            zip(self.objective.objective_names, self.predictor.model._model_list)  # type: ignore[union-attr]
-        ):
-            if single_model.model_with_data is None:
-                continue
-
-            expected_variance = float(expected_noise_model_space[objective_index] ** 2)
-            actual_variance = float(single_model.model_with_data.likelihood.noise)
-            difference = abs(actual_variance - expected_variance)
-            allowed_difference = relative_tolerance * expected_variance
-
-            if difference > allowed_difference:
-                raise ValueError(
-                    f"Noise desync detected for objective '{objective_name}' on JSON reload.\n"
-                    f"  Model noise variance in JSON : {actual_variance:.6e}\n"
-                    f"  Expected from objective.noise_std: {expected_variance:.6e}\n"
-                    f"Noise is controlled via objective.noise_std — do not edit the kernel "
-                    f"noise value in the JSON directly. Update noise_std in your code instead."
-                )
-
-    def _check_noise_configuration(self) -> None:
-        """Raise ValueError if there is a conflict between objective.noise_std and kernel noise settings.
-
-        Checks that no kernel has train_noise=True when physical noise is set on the objective —
-        physical noise must be fixed during training."""
-
-        if self.objective.noise_std is None:
-            return
-
-        if not hasattr(self.predictor, 'model') or not hasattr(self.predictor.model, '_model_list'):
-            return  # can only check BotorchPredictor; skip other predictor types
-
-        for objective_name, single_model in zip(
-            self.objective.objective_names,
-            self.predictor.model._model_list  # type: ignore[union-attr]  # guarded by hasattr above
-        ):
-            if single_model._noise_settings.train_noise:
-                raise ValueError(
-                    f"train_noise=True for the kernel of objective '{objective_name}', but noise_std is "
-                    f"set on the objective. Physical noise must be fixed during training — "
-                    f"set train_noise=False (the default) or remove noise_std from the objective."
-                )
 
     def _reset_suggested_points(self) -> None:
 
@@ -827,7 +760,9 @@ class BayesianOptimiser(SavableClass):
             variable_values=self.evaluated_variable_values.tensor,
             objective_values=self.evaluated_objective_values.tensor,
             train=train,
-            noise_std_in_model_space=self._noise_std_in_model_space
+            noise_std_in_model_space=self._noise_std_in_model_space,
+            noise_std_min_in_model_space=self._noise_std_min_in_model_space,
+            noise_std_max_in_model_space=self._noise_std_max_in_model_space,
         )
 
         self.predictor.update_normalisers(
@@ -1227,6 +1162,30 @@ class BayesianOptimiser(SavableClass):
         return torch.tensor(
             [self.objective.noise_std[name] for name in self.objective.objective_names]
         )
+
+    @property
+    def _noise_std_min_in_model_space(self) -> Optional[torch.Tensor]:
+        """Noise std lower bound in model-input space. None if noise_std_min is not set on the objective."""
+        if self.objective.noise_std_min is None:
+            return None
+        noise_std_min_tensor = torch.tensor(
+            [self.objective.noise_std_min[name] for name in self.objective.objective_names]
+        )
+        if self._normaliser_objectives is None:
+            return noise_std_min_tensor
+        return self._normaliser_objectives.transform_scale(noise_std_min_tensor)
+
+    @property
+    def _noise_std_max_in_model_space(self) -> Optional[torch.Tensor]:
+        """Noise std upper bound in model-input space. None if noise_std_max is not set on the objective."""
+        if self.objective.noise_std_max is None:
+            return None
+        noise_std_max_tensor = torch.tensor(
+            [self.objective.noise_std_max[name] for name in self.objective.objective_names]
+        )
+        if self._normaliser_objectives is None:
+            return noise_std_max_tensor
+        return self._normaliser_objectives.transform_scale(noise_std_max_tensor)
 
     @property
     def _noise_std_in_model_space(self) -> Optional[torch.Tensor]:
