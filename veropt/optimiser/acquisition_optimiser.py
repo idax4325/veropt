@@ -108,7 +108,7 @@ class TorchNumpyWrapper:
     def __call__(
             self,
             variable_values: np.ndarray
-    ) -> np.ndarray:
+    ) -> float:
 
         # TODO: Move somewhere prettier:
         #   - And make more general etc etc
@@ -119,7 +119,7 @@ class TorchNumpyWrapper:
             variable_values=torch.tensor(variable_values)
         )
 
-        return output.detach().numpy()
+        return output.detach().item()
 
 
 class DualAnnealingSettingsInputDict(TypedDict, total=False):

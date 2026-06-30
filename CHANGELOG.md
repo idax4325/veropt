@@ -78,9 +78,11 @@ All notable changes to this project will be documented in this file.
   instead — model is already trained, only the suggest+save half is needed.
   See `changelog_reports/v1.3.0/bug_fixes.md`.
 - **NumPy 2.4 compatibility** (`TypeError: only 0-dimensional arrays can be converted to
-  Python scalars`): `ProximityPunishmentSequentialOptimiser._sample_acq_func` used
-  `.detach().numpy()` when assigning to a numpy scalar slot. Fixed with `.detach().item()`.
-  (closes issue #22)
+  Python scalars`): two sites fixed.
+  `TorchNumpyWrapper.__call__` returned a shape-`[1]` array to `scipy.optimize.dual_annealing`,
+  which expects a scalar — fixed with `.detach().item()`, return type updated to `float`.
+  `ProximityPunishmentSequentialOptimiser._sample_acq_func` had the same pattern assigning
+  to a numpy scalar slot — fixed with `.detach().item()`. (closes issue #22)
 - **Noisy multi-objective reload crash** (`UnsupportedError: Models with multiple batch
   dims`): `gather_dicts_to_save` was saving `model_with_data.train_inputs` as a tuple,
   producing shape `[1, n_points, n_vars]` on reload. Fixed by unwrapping the tuple on save.
