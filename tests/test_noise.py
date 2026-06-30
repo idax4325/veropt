@@ -451,7 +451,7 @@ class TestModelPosteriorVariance:
         assert single_model.model_with_data is not None
         gpytorch_model = single_model.model_with_data
         gpytorch_model.eval()
-        x_test = gpytorch_model.train_inputs[0][0:1]  # first training point from ExactGP storage
+        x_test = gpytorch_model.train_inputs[0][0:1]  # type: ignore[index]  # gpytorch stubs as Module
         with torch.no_grad():
             posterior = gpytorch_model.likelihood(gpytorch_model(x_test))
         return float(posterior.variance.squeeze())

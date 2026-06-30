@@ -262,7 +262,7 @@ class GPyTorchSingleModel(SavableClass, metaclass=abc.ABCMeta):
         if self.model_with_data is not None:
             state_dict = self.model_with_data.state_dict()
             # train_inputs is a gpytorch tuple (X_tensor,); unpack to avoid extra batch dim on reload
-            (train_inputs,) = self.model_with_data.train_inputs
+            (train_inputs,) = self.model_with_data.train_inputs  # type: ignore[misc]  # gpytorch stubs as Module
             train_targets = self.model_with_data.train_targets
 
         else:
