@@ -539,7 +539,7 @@ class ProximityPunishmentSequentialOptimiser(AcquisitionOptimiser):
 
         top_cluster_ind = best_fitter.means_.argmax()
 
-        self.scaling = 2 * float(np.sqrt(best_fitter.covariances_[top_cluster_ind]))
+        self.scaling = 2 * np.sqrt(best_fitter.covariances_[top_cluster_ind]).item()
 
     def gather_dicts_to_save(self) -> dict:
         save_dict = super().gather_dicts_to_save()
