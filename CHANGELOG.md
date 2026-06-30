@@ -46,6 +46,10 @@ All notable changes to this project will be documented in this file.
   name. No changes to the optimiser settings JSON needed.
 
 ### Changed
+- **`run_experiment_step_submitted` refactored into three phases** (collect, optimise,
+  submit), each with an explicit skip condition. `run_experiment_step_direct` follows the
+  same pattern (optimise, run-and-collect). Phase logic is extracted into private helpers
+  `_collect_previous_batch`, `_submit_next_batch`, and `_run_and_collect_batch_direct`.
 - **Noise architecture**: all user-facing noise configuration (`noise_std`, `train_noise`,
   `noise_std_min`, `noise_std_max`) lives exclusively on `Objective` in physical units.
   The internal `NoiseSettingsInputDict` TypedDict and `NoiseParameters` dataclass have been
@@ -63,6 +67,16 @@ All notable changes to this project will be documented in this file.
   structural JSON change in this release).
 
 ### Fixed
+- **`continue_with_new_version` phantom points**: `run_experiment_step_submitted` was
+  registering a next batch in state before the "don't submit on last step" guard, leaving
+  `n_evals_per_step` phantom points in state after a completed experiment. New-version
+  indices now start at the correct offset.
+- **`continue_with_new_version` double-load**: the first step of a new version was
+  calling `run_optimisation_step()` with `just_rebuilt=True`, which re-read
+  `evaluated_objectives.json` (still holding the last replayed batch) and loaded those
+  points into the GP a second time. Fixed by calling `suggest_and_save_candidates()`
+  instead — model is already trained, only the suggest+save half is needed.
+  See `changelog_reports/v1.3.0/bug_fixes.md`.
 - **NumPy 2.4 compatibility** (`TypeError: only 0-dimensional arrays can be converted to
   Python scalars`): `ProximityPunishmentSequentialOptimiser._sample_acq_func` used
   `.detach().numpy()` when assigning to a numpy scalar slot. Fixed with `.detach().item()`.

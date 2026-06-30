@@ -443,6 +443,15 @@ class BayesianOptimiser(SavableClass):
         if self.settings.verbose and self.n_points_evaluated > 0:
             self._print_load_status()
 
+    def suggest_and_save_candidates(self) -> None:
+
+        assert self.objective_type == ObjectiveKind.interface, (
+            "This method requires an interface objective."
+        )
+
+        self.suggest_candidates()
+        self._save_candidates()
+
     def train_model(self) -> None:
 
         if self.settings.normalise:

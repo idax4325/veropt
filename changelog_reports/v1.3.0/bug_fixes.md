@@ -36,6 +36,74 @@ graph, so the memory-leak protection is preserved.
 
 ---
 
+## `continue_with_new_version` — phantom points and double-load
+
+**Files:** `veropt/interfaces/experiment.py`, `veropt/optimiser/optimiser.py`
+
+Two related bugs affecting `continue_with_new_version` when the old experiment had
+been run to completion via the submitted (SLURM) workflow.
+
+### Bug 1 — Phantom points in state after completion
+
+**Symptom:** after `continue_with_new_version`, `state.n_points` was 2 larger than
+`n_points_evaluated`, and new-version point indices started at the wrong offset, leaving
+a gap in the state.
+
+**Root cause:** `run_experiment_step_submitted` always called `get_parameters_from_optimiser()`
+(which registers new `Point` objects in `state`) before the `if not last_step` guard that
+decided whether to actually submit them.  On the final step the registration happened but
+the submit was skipped, leaving `n_evals_per_step` phantom points in state with no job,
+no result and no objective values.
+
+**Fix:** `is_last_step` is now computed before `_submit_next_batch()` (which contains
+`get_parameters_from_optimiser()`), so no points are ever registered for a batch that
+will not be submitted.
+
+### Bug 2 — Double-load of last replayed batch
+
+**Symptom:** after `continue_with_new_version` + 2 new steps, `n_points_evaluated`
+overshot by `n_evals_per_step`, and point indices were non-contiguous.
+
+**Root cause:** the replay loop in `continue_with_new_version` ends by writing the last
+replayed batch to `evaluated_objectives.json`.  The first call to
+`run_experiment_step_submitted` on the new version (with `just_rebuilt=True`) skips the
+wait/collect phase but still called `run_optimisation_step()`, which starts with
+`_load_latest_points()` — re-reading that file and adding the last batch to the GP a
+second time.
+
+**Fix:** when `just_rebuilt=True`, the optimise phase calls
+`suggest_and_save_candidates()` instead of `run_optimisation_step()`.  The model was
+already trained by `continue_with_new_version`'s `train_model()` call; this just runs
+the suggest+save half without the load, cleanly producing the first new batch of
+candidates.
+
+### Refactor
+
+Both fixes motivated restructuring `run_experiment_step_submitted` into three named
+phases — collect, optimise, submit — each with an explicit skip condition:
+
+```python
+has_previous_batch = self.current_step > 0 and not self.state.just_rebuilt
+if has_previous_batch:
+    self._collect_previous_batch()
+
+is_last_step = self.current_step == self.n_total_steps - 1
+
+if not self.state.just_rebuilt:
+    self.optimiser.run_optimisation_step()
+else:
+    self.optimiser.suggest_and_save_candidates()
+
+self._save_optimiser()
+
+if not is_last_step:
+    self._submit_next_batch()
+```
+
+`run_experiment_step_direct` received the same treatment (optimise + run-and-collect).
+
+---
+
 ## Noisy multi-objective reload crash — `batch_shape=[1]`
 
 **File:** `veropt/optimiser/model.py`, `veropt/optimiser/prediction.py`

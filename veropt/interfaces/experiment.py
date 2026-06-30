@@ -499,16 +499,11 @@ class Experiment:
             file_path=self.path_manager.optimiser_state_json
         )
 
-    def run_experiment_step_direct(self) -> None:
-
-        assert issubclass(type(self.batch_manager), DirectBatchManager), (
-            "Batch manager must be subclassing DirectBatchManager to call this method."
-        )
-        self.optimiser.run_optimisation_step()
+    def _run_and_collect_batch_direct(self) -> None:
 
         dict_of_parameters = self.get_parameters_from_optimiser()
 
-        results = self.batch_manager.run_batch(  # type: ignore[union-attr]  # Checked above
+        results = self.batch_manager.run_batch(  # type: ignore[union-attr]  # Checked by caller
             dict_of_parameters=dict_of_parameters,
             experimental_state=self.state
         )
@@ -523,62 +518,74 @@ class Experiment:
             existing_objective_values=objective_values
         )
 
-        self.save_objectives_to_state(
-            dict_of_objectives=dict_of_objectives
+        self.save_objectives_to_state(dict_of_objectives=dict_of_objectives)
+        self.send_objectives_to_optimiser(dict_of_objectives=dict_of_objectives)
+
+    def _collect_previous_batch(self) -> None:
+
+        self.batch_manager.wait_for_jobs(  # type: ignore[union-attr]  # Checked by caller
+            experimental_state=self.state
         )
-        self.send_objectives_to_optimiser(
-            dict_of_objectives=dict_of_objectives
+
+        results = self.state.get_results(
+            start_point=self.current_batch_indices['start'],
+            end_point=self.current_batch_indices['end']
         )
+
+        objective_values = self.state.get_objective_values(
+            start_point=self.current_batch_indices['start'],
+            end_point=self.current_batch_indices['end']
+        )
+
+        dict_of_objectives = self.result_processor.process(
+            results=results,
+            existing_objective_values=objective_values
+        )
+
+        self.save_objectives_to_state(dict_of_objectives=dict_of_objectives)
+        self.send_objectives_to_optimiser(dict_of_objectives=dict_of_objectives)
+
+    def _submit_next_batch(self) -> None:
+
+        dict_of_parameters = self.get_parameters_from_optimiser()
+
+        self.batch_manager.submit_batch(  # type: ignore[union-attr]  # Checked by caller
+            dict_of_parameters=dict_of_parameters,
+            experimental_state=self.state
+        )
+
+    def run_experiment_step_direct(self) -> None:
+
+        assert issubclass(type(self.batch_manager), DirectBatchManager), (
+            "Batch manager must be subclassing DirectBatchManager to call this method."
+        )
+
+        self.optimiser.run_optimisation_step()
+        self._run_and_collect_batch_direct()
 
     def run_experiment_step_submitted(self) -> None:
 
-        # Note for the future: Could consider doing two Optimiser and two Experiment classes instead of these checks
         assert issubclass(type(self.batch_manager), SubmitBatchManager), (
             "Batch manager must be subclassing SubmitBatchManager to call this method"
         )
 
-        if not self.current_step == 0 and not self.state.just_rebuilt:
+        has_previous_batch = self.current_step > 0 and not self.state.just_rebuilt
+        if has_previous_batch:
+            self._collect_previous_batch()
 
-            self.batch_manager.wait_for_jobs(  # type: ignore[union-attr]  # Checked above
-                experimental_state=self.state
-            )
+        is_last_step = self.current_step == self.n_total_steps - 1
 
-            results = self.state.get_results(
-                start_point=self.current_batch_indices['start'],
-                end_point=self.current_batch_indices['end']
-            )
-
-            objective_values = self.state.get_objective_values(
-                start_point=self.current_batch_indices['start'],
-                end_point=self.current_batch_indices['end']
-            )
-
-            dict_of_objectives = self.result_processor.process(
-                results=results,
-                existing_objective_values=objective_values
-            )
-
-            self.save_objectives_to_state(
-                dict_of_objectives=dict_of_objectives
-            )
-            self.send_objectives_to_optimiser(
-                dict_of_objectives=dict_of_objectives
-            )
-
-        self.optimiser.run_optimisation_step()
-
-        dict_of_parameters = self.get_parameters_from_optimiser()
+        if not self.state.just_rebuilt:
+            self.optimiser.run_optimisation_step()
+        else:
+            self.optimiser.suggest_and_save_candidates()
 
         self._save_optimiser()
 
-        if not self.current_step == self.n_total_steps:
-            self.batch_manager.submit_batch(  # type: ignore[union-attr]  # Checked above
-                dict_of_parameters=dict_of_parameters,
-                experimental_state=self.state
-            )
+        if not is_last_step:
+            self._submit_next_batch()
 
-        if self.state.just_rebuilt:
-            self.state.just_rebuilt = False
+        self.state.just_rebuilt = False
 
     def re_run_experiment_step_from_existing_data(self) -> None:
 
