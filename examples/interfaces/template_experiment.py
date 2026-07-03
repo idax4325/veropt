@@ -52,7 +52,23 @@ class UserDefinedResultProcessor(ResultProcessor):
 # For an example of a SimulationRunner, see 'SlurmVerosRunner' under veropt/interfaces/slurm_simulation
 simulation_runner = UserDefinedSimulationRunner()
 
-# Write your own json configuration files but check out ours to see some examples
+# Write your own json configuration files but check out ours to see some examples.
+# The experiment config controls problem settings (bounds, objective noise, etc.).
+# To set a known constant observation noise per objective, add "noise_std" to the
+# experiment config JSON, for example:
+#
+#   {
+#       "experiment_name": "my_experiment",
+#       "parameter_names": ["param1", "param2"],
+#       "parameter_bounds": {"param1": [0.0, 1.0], "param2": [-1.0, 1.0]},
+#       "path_to_experiment": "path/to/experiment",
+#       "experiment_mode": "local_slurm",
+#       "output_filename": "output.nc",
+#       "noise_std": {"my_objective": 0.05}
+#   }
+#
+# When noise_std is set, veropt automatically uses the noisy acquisition function
+# (qLogNoisyEHVI for multi-objective) and shows uncertainty ellipses on Pareto plots.
 optimiser_config = "veropt/examples/example_optimiser_settings.json"
 experiment_config = "veropt/interfaces/configs/veros_experiment_config.json"
 

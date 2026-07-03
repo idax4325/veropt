@@ -251,6 +251,59 @@ class QLogExpectedHyperVolumeImprovement(BotorchAcquisitionFunction):
         )
 
 
+class QLogNoisyExpectedHypervolumeImprovement(BotorchAcquisitionFunction):
+
+    name = 'qlogneHVI'
+    multi_objective = True
+
+    def __init__(
+            self,
+            n_variables: int,
+            n_objectives: int,
+    ) -> None:
+
+        super().__init__(
+            n_variables=n_variables,
+            n_objectives=n_objectives
+        )
+
+    @classmethod
+    def from_n_variables_n_objectives_and_settings(
+            cls,
+            n_variables: int,
+            n_objectives: int,
+            settings: Mapping[str, Any]
+    ) -> Self:
+        assert len(settings) == 0, f"{cls.name} doesn't use any settings but received {settings}"
+
+        return cls(
+            n_variables=n_variables,
+            n_objectives=n_objectives
+        )
+
+    def get_settings(self) -> SavableDataClass:
+        return EmptyDataClass()
+
+    def _refresh(
+            self,
+            model: botorch.models.model.Model,
+            variable_values: torch.Tensor,
+            objective_values: torch.Tensor,
+    ) -> None:
+
+        nadir_point = get_nadir_point(
+            variable_values=variable_values,
+            objective_values=objective_values
+        )
+
+        self.function = botorch.acquisition.multi_objective.logei.qLogNoisyExpectedHypervolumeImprovement(
+            model=model,
+            ref_point=nadir_point,
+            X_baseline=variable_values,
+            prune_baseline=True
+        )
+
+
 # For typing in the constructors
 class UpperConfidenceBoundOptionsInputDict(TypedDict, total=False):
     beta: float

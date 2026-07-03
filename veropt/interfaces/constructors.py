@@ -13,7 +13,8 @@ def experiment(
         experiment_config: Union[str, ExperimentConfig],
         optimiser_config: Union[str, dict],
         batch_manager_class: Optional[Union[type[DirectBatchManager], type[SubmitBatchManager]]] = None,
-        continue_if_possible: bool = True
+        continue_if_possible: bool = True,
+        allow_automatic_json_updates: Optional[bool] = None
 ) -> Experiment:
 
     if continue_if_possible:
@@ -22,7 +23,8 @@ def experiment(
             result_processor=result_processor,
             experiment_config=experiment_config,
             optimiser_config=optimiser_config,
-            batch_manager_class=batch_manager_class
+            batch_manager_class=batch_manager_class,
+            allow_automatic_json_updates=allow_automatic_json_updates
         )
 
     else:
@@ -43,7 +45,8 @@ def experiment_with_new_version(
         old_experiment_config: Union[str, ExperimentConfig],
         new_experiment_config: Union[str, ExperimentConfig],
         optimiser_config: Union[str, dict],
-        batch_manager_class: Optional[Union[type[DirectBatchManager], type[SubmitBatchManager]]] = None
+        batch_manager_class: Optional[Union[type[DirectBatchManager], type[SubmitBatchManager]]] = None,
+        allow_automatic_json_updates: Optional[bool] = None
 ) -> Experiment:
 
     experiment_ = Experiment.continue_with_new_version(
@@ -52,7 +55,8 @@ def experiment_with_new_version(
         old_experiment_config=old_experiment_config,
         new_experiment_config=new_experiment_config,
         optimiser_config=optimiser_config,
-        batch_manager_class=batch_manager_class
+        batch_manager_class=batch_manager_class,
+        allow_automatic_json_updates=allow_automatic_json_updates
     )
 
     return experiment_

@@ -108,7 +108,7 @@ class TorchNumpyWrapper:
     def __call__(
             self,
             variable_values: np.ndarray
-    ) -> np.ndarray:
+    ) -> float:
 
         # TODO: Move somewhere prettier:
         #   - And make more general etc etc
@@ -119,7 +119,7 @@ class TorchNumpyWrapper:
             variable_values=torch.tensor(variable_values)
         )
 
-        return output.detach().numpy()
+        return output.detach().item()
 
 
 class DualAnnealingSettingsInputDict(TypedDict, total=False):
@@ -475,7 +475,7 @@ class ProximityPunishmentSequentialOptimiser(AcquisitionOptimiser):
             sample = acquisition_function(
                 variable_values=random_coordinates[coord_ind:coord_ind + 1, :]
             )
-            samples[coord_ind] = sample.detach().numpy()  # If this is not detached, it causes a memory leak o:)
+            samples[coord_ind] = sample.detach().item()
 
         return samples
 
@@ -539,7 +539,7 @@ class ProximityPunishmentSequentialOptimiser(AcquisitionOptimiser):
 
         top_cluster_ind = best_fitter.means_.argmax()
 
-        self.scaling = 2 * float(np.sqrt(best_fitter.covariances_[top_cluster_ind]))
+        self.scaling = 2 * np.sqrt(best_fitter.covariances_[top_cluster_ind]).item()
 
     def gather_dicts_to_save(self) -> dict:
         save_dict = super().gather_dicts_to_save()

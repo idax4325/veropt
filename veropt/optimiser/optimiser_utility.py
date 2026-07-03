@@ -31,7 +31,8 @@ class OptimiserSettings(SavableClass):
             verbose: bool = True,
             renormalise_each_step: Optional[bool] = None,
             n_points_before_fitting: Optional[int] = None,
-            objective_weights: Optional[list[float]] = None
+            objective_weights: Optional[list[float]] = None,
+            allow_automatic_json_updates: bool = False
     ):
         self.n_initial_points = n_initial_points
         self.n_bayesian_points = n_bayesian_points
@@ -69,6 +70,8 @@ class OptimiserSettings(SavableClass):
         else:
             self.objective_weights = torch.tensor(objective_weights)
 
+        self.allow_automatic_json_updates = allow_automatic_json_updates
+
     def gather_dicts_to_save(self) -> dict:
 
         return self.__dict__
@@ -91,6 +94,7 @@ class OptimiserSettingsInputDict(TypedDict, total=False):
     verbose: bool
     renormalise_each_step: bool
     initial_points_generator: InitialPointsChoice
+    allow_automatic_json_updates: bool
 
 
 @dataclass
@@ -261,7 +265,7 @@ class ReferencePointInputDict(TypedDict, total=False):
 @dataclass
 class ReferencePoint(SavableDataClass):
     variable_values: torch.Tensor
-    objective_values: torch.Tensor
+    objective_values: Optional[torch.Tensor]
     normalised: bool
 
     @classmethod
@@ -270,9 +274,11 @@ class ReferencePoint(SavableDataClass):
             saved_state: dict
     ) -> Self:
 
+        raw_objective_values = saved_state.get('objective_values')
+
         return cls(
             variable_values=torch.tensor(saved_state['variable_values']),
-            objective_values=torch.tensor(saved_state['objective_values']),
+            objective_values=torch.tensor(raw_objective_values) if raw_objective_values is not None else None,
             normalised=saved_state['normalised']
         )
 
@@ -444,8 +450,38 @@ def get_pareto_optimal_points(
         variable_values: torch.Tensor,
         objective_values: torch.Tensor,
         weights: Optional[torch.Tensor] = None,
-        sort_by_max_weighted_sum: bool = False
+        sort_by_max_weighted_sum: bool = False,
+        noise_std_per_objective: Optional[torch.Tensor] = None,
+        epsilon_n_sigma: float = 1.0
 ) -> ParetoOptimalPoints:
+    """Return the Pareto-optimal (non-dominated) subset of the evaluated points.
+
+    When `noise_std_per_objective` is supplied the algorithm applies ε-dominance
+    (Laumanns et al. 2002, IEEE TEC 6(3)) with ε_j = epsilon_n_sigma · σ_j: point B
+    dominates A only if B_j > A_j + ε_j for **all** objectives j.  The tolerance is
+    set in units of the noise std, so epsilon_n_sigma=1 (default) means dominance must
+    exceed 1σ of noise per objective.  epsilon_n_sigma=0 recovers the standard noiseless
+    criterion.
+
+    Reference: Laumanns, M., Thiele, L., Deb, K., & Zitzler, E. (2002).
+    Combining convergence and diversity in evolutionary multiobjective optimization.
+    IEEE Transactions on Evolutionary Computation, 6(3), 263–276.
+
+    Parameters
+    ----------
+    noise_std_per_objective:
+        Tensor of shape [n_objectives] with the known noise std per objective.
+        When None the standard (noiseless) Pareto criterion is used.
+    epsilon_n_sigma:
+        Number of noise standard deviations that define ε_j = epsilon_n_sigma · σ_j.
+        Default 1.0 (1σ margin).  Larger values are more conservative (fewer points
+        kept on the front).  0 reduces to the standard noiseless criterion.
+    """
+    margin = (
+        epsilon_n_sigma * noise_std_per_objective
+        if noise_std_per_objective is not None
+        else torch.zeros(objective_values.shape[DataShape.index_dimensions])
+    )
 
     pareto_optimal_booleans = torch.ones(
         size=(objective_values.shape[DataShape.index_points],),
@@ -453,8 +489,10 @@ def get_pareto_optimal_points(
     )
     for value_index, value in enumerate(objective_values):
         if pareto_optimal_booleans[value_index]:
+            # Standard:  keep p  if EXISTS j: p_j > value_j
+            # Noisy:     keep p  if EXISTS j: p_j > value_j − margin_j
             pareto_optimal_booleans[pareto_optimal_booleans.clone()] = torch.any(
-                input=objective_values[pareto_optimal_booleans] > value,
+                input=objective_values[pareto_optimal_booleans] > value - margin,
                 dim=DataShape.index_dimensions
             )
             pareto_optimal_booleans[value_index] = True
@@ -531,6 +569,22 @@ def named_values_to_tensor(
     return (
         new_variable_values_tensor,
         new_objective_values_tensor
+    )
+
+
+def _named_variables_to_tensor(
+        variable_values: Mapping[str, Union[torch.Tensor, float]],
+        variable_names: list[str],
+) -> torch.Tensor:
+    """Convert a name→value dict to a [1, n_variables] tensor (variables only)."""
+    converted = _convert_to_tensors(
+        values=variable_values,
+        names=variable_names,
+        expected_amount_points=1
+    )
+    return torch.stack(
+        [converted[name] for name in variable_names],
+        dim=DataShape.index_dimensions
     )
 
 

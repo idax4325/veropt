@@ -150,7 +150,8 @@ class Experiment:
             simulation_runner: SimulationRunner,
             result_processor: ResultProcessor,
             experiment_config: Union[str, ExperimentConfig],
-            batch_manager_class: Optional[Union[type[DirectBatchManager], type[SubmitBatchManager]]] = None
+            batch_manager_class: Optional[Union[type[DirectBatchManager], type[SubmitBatchManager]]] = None,
+            allow_automatic_json_updates: Optional[bool] = None
     ) -> Self:
 
         experiment_config = ExperimentConfig.load(experiment_config)
@@ -166,7 +167,8 @@ class Experiment:
         )
 
         optimiser = load_optimiser_from_state(
-            file_name=path_manager.optimiser_state_json
+            file_name=path_manager.optimiser_state_json,
+            allow_automatic_json_updates=allow_automatic_json_updates
         )
 
         return cls(
@@ -187,7 +189,8 @@ class Experiment:
             experiment_config: Union[str, ExperimentConfig],
             optimiser_config: Union[str, dict],
             batch_manager_class: Optional[Union[type[DirectBatchManager], type[SubmitBatchManager]]] = None,
-            state_path: Optional[str] = None
+            state_path: Optional[str] = None,
+            allow_automatic_json_updates: Optional[bool] = None
     ) -> Self:
 
         experiment_config = ExperimentConfig.load(experiment_config)
@@ -202,7 +205,8 @@ class Experiment:
                 simulation_runner=simulation_runner,
                 result_processor=result_processor,
                 experiment_config=experiment_config,
-                batch_manager_class=batch_manager_class
+                batch_manager_class=batch_manager_class,
+                allow_automatic_json_updates=allow_automatic_json_updates
             )
         else:
             return cls.from_the_beginning(
@@ -221,7 +225,8 @@ class Experiment:
             old_experiment_config: Union[str, ExperimentConfig],
             new_experiment_config: Union[str, ExperimentConfig],
             optimiser_config: Union[str, dict],
-            batch_manager_class: Optional[Union[type[DirectBatchManager], type[SubmitBatchManager]]] = None
+            batch_manager_class: Optional[Union[type[DirectBatchManager], type[SubmitBatchManager]]] = None,
+            allow_automatic_json_updates: Optional[bool] = None
     ) -> Self:
 
         # TODO: Change name
@@ -250,7 +255,8 @@ class Experiment:
 
         old_state = ExperimentalState.load(old_state_path)
         old_optimiser = load_optimiser_from_state(
-            file_name=old_path_manager.optimiser_state_json
+            file_name=old_path_manager.optimiser_state_json,
+            allow_automatic_json_updates=allow_automatic_json_updates
         )
 
         if os.path.exists(new_state_path):
@@ -261,7 +267,8 @@ class Experiment:
             )
 
             new_optimiser = load_optimiser_from_state(
-                file_name=new_path_manager.optimiser_state_json
+                file_name=new_path_manager.optimiser_state_json,
+                allow_automatic_json_updates=allow_automatic_json_updates
             )
 
             assert new_optimiser.n_points_evaluated < old_optimiser.n_points_evaluated, (
@@ -348,7 +355,11 @@ class Experiment:
             variable_names=experiment_config.parameter_names,
             objective_names=result_processor.objective_names,
             suggested_parameters_json=path_manager.suggested_parameters_json,
-            evaluated_objectives_json=path_manager.evaluated_objectives_json
+            evaluated_objectives_json=path_manager.evaluated_objectives_json,
+            noise_std=experiment_config.noise_std,
+            noise_std_min=experiment_config.noise_std_min,
+            noise_std_max=experiment_config.noise_std_max,
+            train_noise=experiment_config.train_noise,
         )
 
         if isinstance(optimiser_config, str):
@@ -488,16 +499,11 @@ class Experiment:
             file_path=self.path_manager.optimiser_state_json
         )
 
-    def run_experiment_step_direct(self) -> None:
-
-        assert issubclass(type(self.batch_manager), DirectBatchManager), (
-            "Batch manager must be subclassing DirectBatchManager to call this method."
-        )
-        self.optimiser.run_optimisation_step()
+    def _run_and_collect_batch_direct(self) -> None:
 
         dict_of_parameters = self.get_parameters_from_optimiser()
 
-        results = self.batch_manager.run_batch(  # type: ignore[union-attr]  # Checked above
+        results = self.batch_manager.run_batch(  # type: ignore[union-attr]  # Checked by caller
             dict_of_parameters=dict_of_parameters,
             experimental_state=self.state
         )
@@ -512,61 +518,74 @@ class Experiment:
             existing_objective_values=objective_values
         )
 
-        self.save_objectives_to_state(
-            dict_of_objectives=dict_of_objectives
+        self.save_objectives_to_state(dict_of_objectives=dict_of_objectives)
+        self.send_objectives_to_optimiser(dict_of_objectives=dict_of_objectives)
+
+    def _collect_previous_batch(self) -> None:
+
+        self.batch_manager.wait_for_jobs(  # type: ignore[union-attr]  # Checked by caller
+            experimental_state=self.state
         )
-        self.send_objectives_to_optimiser(
-            dict_of_objectives=dict_of_objectives
+
+        results = self.state.get_results(
+            start_point=self.current_batch_indices['start'],
+            end_point=self.current_batch_indices['end']
         )
+
+        objective_values = self.state.get_objective_values(
+            start_point=self.current_batch_indices['start'],
+            end_point=self.current_batch_indices['end']
+        )
+
+        dict_of_objectives = self.result_processor.process(
+            results=results,
+            existing_objective_values=objective_values
+        )
+
+        self.save_objectives_to_state(dict_of_objectives=dict_of_objectives)
+        self.send_objectives_to_optimiser(dict_of_objectives=dict_of_objectives)
+
+    def _submit_next_batch(self) -> None:
+
+        dict_of_parameters = self.get_parameters_from_optimiser()
+
+        self.batch_manager.submit_batch(  # type: ignore[union-attr]  # Checked by caller
+            dict_of_parameters=dict_of_parameters,
+            experimental_state=self.state
+        )
+
+    def run_experiment_step_direct(self) -> None:
+
+        assert issubclass(type(self.batch_manager), DirectBatchManager), (
+            "Batch manager must be subclassing DirectBatchManager to call this method."
+        )
+
+        self.optimiser.run_optimisation_step()
+        self._run_and_collect_batch_direct()
 
     def run_experiment_step_submitted(self) -> None:
 
-        # Note for the future: Could consider doing two Optimiser and two Experiment classes instead of these checks
         assert issubclass(type(self.batch_manager), SubmitBatchManager), (
             "Batch manager must be subclassing SubmitBatchManager to call this method"
         )
 
-        if not self.current_step == 0 and not self.state.just_rebuilt:
+        has_previous_batch = self.current_step > 0 and not self.state.just_rebuilt
+        if has_previous_batch:
+            self._collect_previous_batch()
 
-            self.batch_manager.wait_for_jobs(  # type: ignore[union-attr]  # Checked above
-                experimental_state=self.state
-            )
+        is_last_step = self.current_step == self.n_total_steps - 1
 
-            results = self.state.get_results(
-                start_point=self.current_batch_indices['start'],
-                end_point=self.current_batch_indices['end']
-            )
-
-            objective_values = self.state.get_objective_values(
-                start_point=self.current_batch_indices['start'],
-                end_point=self.current_batch_indices['end']
-            )
-
-            dict_of_objectives = self.result_processor.process(
-                results=results,
-                existing_objective_values=objective_values
-            )
-
-            self.save_objectives_to_state(
-                dict_of_objectives=dict_of_objectives
-            )
-            self.send_objectives_to_optimiser(
-                dict_of_objectives=dict_of_objectives
-            )
-
-            self.state.just_rebuilt = False  # Maybe find more general name
-
-        self.optimiser.run_optimisation_step()
-
-        dict_of_parameters = self.get_parameters_from_optimiser()
+        if not self.state.just_rebuilt:
+            self.optimiser.run_optimisation_step()
+        else:
+            self.optimiser.suggest_and_save_candidates()
 
         self._save_optimiser()
 
-        if not self.current_step == self.n_total_steps:
-            self.batch_manager.submit_batch(  # type: ignore[union-attr]  # Checked above
-                dict_of_parameters=dict_of_parameters,
-                experimental_state=self.state
-            )
+        if not is_last_step:
+            self._submit_next_batch()
+
+        self.state.just_rebuilt = False
 
     def re_run_experiment_step_from_existing_data(self) -> None:
 

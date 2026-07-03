@@ -22,7 +22,7 @@ from veropt.optimiser.utility import _load_defaults, _validate_typed_dict
 
 KernelOptimiserOptions = Literal['adam']
 
-AcquisitionOptions = Literal['qlogehvi', 'ucb']
+AcquisitionOptions = Literal['qlogehvi', 'qlogneHVI', 'ucb']
 AcquisitionOptimiserOptions = Literal['dual_annealing']
 
 AcquisitionSettings = UpperConfidenceBoundOptionsInputDict  # expand with more options when adding acq_funcs
@@ -31,11 +31,16 @@ AcquisitionOptimiserSettings = DualAnnealingSettingsInputDict  # expand when add
 ModelOptimiserSettings = AdamInputDict
 
 
-class ProblemInformation(TypedDict):
+class ProblemInformationRequired(TypedDict):
     n_variables: int
     n_objectives: int
     n_evaluations_per_step: int
     bounds: list[list[float]]
+
+
+class ProblemInformation(ProblemInformationRequired, total=False):
+    is_noisy: bool
+    train_noise: bool
 
 
 class GPytorchModelChoice(TypedDict, total=False):
@@ -80,6 +85,8 @@ def bayesian_optimiser(
         'n_objectives': objective.n_objectives,
         'n_evaluations_per_step': n_evaluations_per_step,
         'bounds': objective.bounds.tolist(),
+        'is_noisy': objective.noise_std is not None,
+        'train_noise': objective.train_noise,
     }
 
     built_predictor = botorch_predictor(
@@ -137,9 +144,9 @@ def botorch_predictor(
         built_model = gpytorch_model(
             n_variables=problem_information['n_variables'],
             n_objectives=problem_information['n_objectives'],
+            train_noise=problem_information.get('train_noise', False),
             **model or {},
         )
-
     if isinstance(acquisition_function, BotorchAcquisitionFunction):
 
         built_acquisition_function = acquisition_function
@@ -148,6 +155,7 @@ def botorch_predictor(
         built_acquisition_function = botorch_acquisition_function(
             n_variables=problem_information['n_variables'],
             n_objectives=problem_information['n_objectives'],
+            is_noisy=problem_information.get('is_noisy', False),
             **acquisition_function or {}
         )
 
@@ -173,6 +181,7 @@ def gpytorch_model(
         n_objectives: int,
         kernels: Union[SingleKernelOptions, list[SingleKernelOptions], list[GPyTorchSingleModel], None] = None,
         kernel_settings: Union['KernelInputDict', list['KernelInputDict'], None] = None,
+        train_noise: bool = False,
         kernel_optimiser: Optional[KernelOptimiserOptions] = None,
         kernel_optimiser_settings: Optional[ModelOptimiserSettings] = None,
         training_settings: Optional[GPyTorchTrainingParametersInputDict] = None,
@@ -182,7 +191,8 @@ def gpytorch_model(
         n_variables=n_variables,
         n_objectives=n_objectives,
         kernels=kernels,
-        kernel_settings=kernel_settings
+        kernel_settings=kernel_settings,
+        train_noise=train_noise
     )
 
     model_optimiser = torch_model_optimiser(
@@ -203,7 +213,8 @@ def gpytorch_single_model_list(
         n_variables: int,
         n_objectives: int,
         kernels: Union[SingleKernelOptions, list[SingleKernelOptions], list[GPyTorchSingleModel], None] = None,
-        kernel_settings: Union['KernelInputDict', list['KernelInputDict'], None] = None
+        kernel_settings: Union['KernelInputDict', list['KernelInputDict'], None] = None,
+        train_noise: bool = False
 ) -> list[GPyTorchSingleModel]:
 
     wrong_kernel_input_message = (
@@ -237,14 +248,15 @@ def gpytorch_single_model_list(
                 single_model_list.append(gpytorch_single_model(
                     n_variables=n_variables,
                     kernel=kernel,  # type: ignore[arg-type]  # checked above, kernel is 'str'
-                    settings=kernel_settings[kernel_no]
+                    settings=kernel_settings[kernel_no],
+                    train_noise=train_noise
                 ))
 
         elif isinstance(kernels[0], GPyTorchSingleModel):
 
             assert kernel_settings is None, "Cannot accept kernel settings for an already created model list."
 
-            for kernel in kernels:
+            for kernel in kernels:  # type: ignore[assignment]  # list[GPyTorchSingleModel] checked above
                 assert isinstance(kernel, GPyTorchSingleModel), wrong_kernel_input_message
 
             single_model_list = kernels  # type: ignore[assignment]  # (type is checked above, mypy can't follow it)
@@ -264,7 +276,8 @@ def gpytorch_single_model_list(
             single_model_list.append(gpytorch_single_model(
                 n_variables=n_variables,
                 kernel=kernels,
-                settings=kernel_settings
+                settings=kernel_settings,
+                train_noise=train_noise
             ))
 
     elif kernels is None:
@@ -274,7 +287,8 @@ def gpytorch_single_model_list(
         single_model_list = []
         for objective_no in range(n_objectives):
             single_model_list.append(gpytorch_single_model(
-                n_variables=n_variables
+                n_variables=n_variables,
+                train_noise=train_noise
             ))
 
     else:
@@ -286,7 +300,8 @@ def gpytorch_single_model_list(
 def gpytorch_single_model(
         n_variables: int,
         kernel: Optional[SingleKernelOptions] = None,
-        settings: Optional[KernelInputDict] = None
+        settings: Optional[KernelInputDict] = None,
+        train_noise: bool = False
 ) -> GPyTorchSingleModel:
 
     settings = settings or {}
@@ -297,7 +312,8 @@ def gpytorch_single_model(
         return gpytorch_single_model(
             n_variables=n_variables,
             kernel=defaults['model']['kernel'],
-            settings=settings
+            settings=settings,
+            train_noise=train_noise
         )
 
     subclasses = get_all_subclasses(
@@ -310,7 +326,8 @@ def gpytorch_single_model(
 
             return subclass.from_n_variables_and_settings(
                 n_variables=n_variables,
-                settings=settings
+                settings=settings,
+                train_noise=train_noise
             )
 
     # Shouldn't reach this point if kernel is recognised
@@ -355,6 +372,7 @@ def torch_model_optimiser(
 def botorch_acquisition_function(
         n_variables: int,
         n_objectives: int,
+        is_noisy: bool = False,
         function: Optional[AcquisitionOptions] = None,
         parameters: Optional[AcquisitionSettings] = None
 ) -> BotorchAcquisitionFunction:
@@ -365,18 +383,22 @@ def botorch_acquisition_function(
 
         if n_objectives > 1:
 
+            default_key = 'noisy_multi_objective' if is_noisy else 'multi_objective'
             return botorch_acquisition_function(
                 n_variables=n_variables,
                 n_objectives=n_objectives,
-                function=defaults['acquisition']['multi_objective']
+                is_noisy=is_noisy,
+                function=defaults['acquisition'][default_key]
             )
 
         elif n_objectives == 1:
 
+            default_key = 'noisy_single_objective' if is_noisy else 'single_objective'
             return botorch_acquisition_function(
                 n_variables=n_variables,
                 n_objectives=n_objectives,
-                function=defaults['acquisition']['single_objective']
+                is_noisy=is_noisy,
+                function=defaults['acquisition'][default_key]
             )
 
         else:

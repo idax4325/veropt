@@ -52,3 +52,10 @@ def test_gpytorch_model() -> None:
         assert class_name == class_name_from_constructors
 
     assert model.settings == model_from_constructors.settings
+
+
+def test_train_noise_passed_to_model() -> None:
+    """train_noise=True must be propagated to every single model in the list."""
+    model = gpytorch_model(n_variables=3, n_objectives=2, train_noise=True)
+    for single_model in model._model_list:
+        assert single_model.train_noise is True

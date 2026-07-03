@@ -37,6 +37,24 @@ class Normaliser(SavableClass, metaclass=abc.ABCMeta):
 
         pass
 
+    @abc.abstractmethod
+    def transform_scale(
+            self,
+            tensor: torch.Tensor
+    ) -> torch.Tensor:
+        """Apply only the scale part of the normalisation (no mean shift).
+        Use this for magnitudes such as noise standard deviations."""
+        pass
+
+    @abc.abstractmethod
+    def inverse_transform_scale(
+            self,
+            tensor: torch.Tensor
+    ) -> torch.Tensor:
+        """Undo only the scale part of the normalisation (no mean shift).
+        Inverse of transform_scale."""
+        pass
+
 
 class NormaliserZeroMeanUnitVariance(Normaliser):
 
@@ -91,6 +109,18 @@ class NormaliserZeroMeanUnitVariance(Normaliser):
     ) -> torch.Tensor:
 
         return tensor * torch.sqrt(self.variances) + self.means
+
+    def transform_scale(
+            self,
+            tensor: torch.Tensor
+    ) -> torch.Tensor:
+        return tensor / torch.sqrt(self.variances)
+
+    def inverse_transform_scale(
+            self,
+            tensor: torch.Tensor
+    ) -> torch.Tensor:
+        return tensor * torch.sqrt(self.variances)
 
     def gather_dicts_to_save(self) -> dict:
         return {

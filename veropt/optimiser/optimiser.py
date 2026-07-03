@@ -18,6 +18,7 @@ from veropt.optimiser.optimiser_utility import (
     OptimiserSettings, OptimiserSettingsInputDict, ParetoOptimalPoints, ReferencePoint, ReferencePointInputDict,
     SuggestedPoints,
     named_values_to_tensor,
+    _named_variables_to_tensor,
     format_output_for_objective, get_best_points, get_pareto_optimal_points,
     list_with_floats_to_string, normalise_suggested_points, unnormalise_suggested_points
 )
@@ -156,13 +157,20 @@ class BayesianOptimiser(SavableClass):
 
         if reference_point is not None:
 
-            reference_variable_values, reference_objective_values = named_values_to_tensor(
-                new_variable_values=reference_point['variable_values'],
-                new_objective_values=reference_point['objective_values'],
+            reference_variable_values = _named_variables_to_tensor(
+                variable_values=reference_point['variable_values'],
                 variable_names=objective.variable_names,
-                objective_names=objective.objective_names,
-                expected_amount_points=1
             )
+
+            reference_objective_values: Optional[torch.Tensor] = None
+            if 'objective_values' in reference_point:
+                _, reference_objective_values = named_values_to_tensor(
+                    new_variable_values=reference_point['variable_values'],
+                    new_objective_values=reference_point['objective_values'],
+                    variable_names=objective.variable_names,
+                    objective_names=objective.objective_names,
+                    expected_amount_points=1
+                )
 
             reference_point_in_class = ReferencePoint(
                 variable_values=reference_variable_values,
@@ -435,11 +443,19 @@ class BayesianOptimiser(SavableClass):
         if self.settings.verbose and self.n_points_evaluated > 0:
             self._print_load_status()
 
+    def suggest_and_save_candidates(self) -> None:
+
+        assert self.objective_type == ObjectiveKind.interface, (
+            "This method requires an interface objective."
+        )
+
+        self.suggest_candidates()
+        self._save_candidates()
+
     def train_model(self) -> None:
 
         if self.settings.normalise:
             self._fit_normaliser()
-
         self._update_predictor()
 
     def suggest_candidates(self) -> None:
@@ -513,12 +529,19 @@ class BayesianOptimiser(SavableClass):
 
         return best_point
 
-    def get_pareto_optimal_points(self) -> ParetoOptimalPoints:
+    def get_pareto_optimal_points(
+            self,
+            epsilon_n_sigma: float = 1.0
+    ) -> ParetoOptimalPoints:
+
+        noise_std = self._noise_std_in_model_space
 
         pareto_optimal_points = get_pareto_optimal_points(
             variable_values=self.evaluated_variable_values.tensor,
             objective_values=self.evaluated_objective_values.tensor,
-            weights=self.settings.objective_weights
+            weights=self.settings.objective_weights,
+            noise_std_per_objective=noise_std,
+            epsilon_n_sigma=epsilon_n_sigma
         )
 
         return pareto_optimal_points
@@ -558,13 +581,20 @@ class BayesianOptimiser(SavableClass):
             reference_point: ReferencePointInputDict,
     ) -> None:
 
-        reference_variable_values, reference_objective_values = named_values_to_tensor(
-            new_variable_values=reference_point['variable_values'],
-            new_objective_values=reference_point['objective_values'],
+        reference_variable_values = _named_variables_to_tensor(
+            variable_values=reference_point['variable_values'],
             variable_names=self.objective.variable_names,
-            objective_names=self.objective.objective_names,
-            expected_amount_points=1
         )
+
+        reference_objective_values: Optional[torch.Tensor] = None
+        if 'objective_values' in reference_point:
+            _, reference_objective_values = named_values_to_tensor(
+                new_variable_values=reference_point['variable_values'],
+                new_objective_values=reference_point['objective_values'],
+                variable_names=self.objective.variable_names,
+                objective_names=self.objective.objective_names,
+                expected_amount_points=1
+            )
 
         self.reference_point = ReferencePoint(
             variable_values=reference_variable_values,
@@ -752,7 +782,10 @@ class BayesianOptimiser(SavableClass):
         self.predictor.update_with_new_data(
             variable_values=self.evaluated_variable_values.tensor,
             objective_values=self.evaluated_objective_values.tensor,
-            train=train
+            train=train,
+            noise_std_in_model_space=self._noise_std_in_model_space,
+            noise_std_min_in_model_space=self._noise_std_min_in_model_space,
+            noise_std_max_in_model_space=self._noise_std_max_in_model_space,
         )
 
         self.predictor.update_normalisers(
@@ -1143,3 +1176,51 @@ class BayesianOptimiser(SavableClass):
                     normaliser_variables=self._normaliser_variables,
                     normaliser_objectives=self._normaliser_objectives
                 )
+
+    @property
+    def _noise_std_tensor(self) -> Optional[torch.Tensor]:
+        """Physical-units noise std per objective, ordered by objective_names. None if not set."""
+        if self.objective.noise_std is None:
+            return None
+        return torch.tensor(
+            [self.objective.noise_std[name] for name in self.objective.objective_names]
+        )
+
+    @property
+    def _noise_std_min_in_model_space(self) -> Optional[torch.Tensor]:
+        """Noise std lower bound in model-input space. None if noise_std_min is not set on the objective."""
+        if self.objective.noise_std_min is None:
+            return None
+        noise_std_min_tensor = torch.tensor(
+            [self.objective.noise_std_min[name] for name in self.objective.objective_names]
+        )
+        if self._normaliser_objectives is None:
+            return noise_std_min_tensor
+        return self._normaliser_objectives.transform_scale(noise_std_min_tensor)
+
+    @property
+    def _noise_std_max_in_model_space(self) -> Optional[torch.Tensor]:
+        """Noise std upper bound in model-input space. None if noise_std_max is not set on the objective."""
+        if self.objective.noise_std_max is None:
+            return None
+        noise_std_max_tensor = torch.tensor(
+            [self.objective.noise_std_max[name] for name in self.objective.objective_names]
+        )
+        if self._normaliser_objectives is None:
+            return noise_std_max_tensor
+        return self._normaliser_objectives.transform_scale(noise_std_max_tensor)
+
+    @property
+    def _noise_std_in_model_space(self) -> Optional[torch.Tensor]:
+        """Noise std in model-input space: normalised when the normaliser is fitted, physical otherwise.
+        Returns None when no noise_std is set on the objective.
+
+        When normalisation is off (settings.normalise=False) or not yet fitted,
+        _normaliser_objectives is None and physical units are returned directly — which is
+        correct because the GP then operates on physical-unit data."""
+        noise_std_tensor = self._noise_std_tensor
+        if noise_std_tensor is None:
+            return None
+        if self._normaliser_objectives is None:
+            return noise_std_tensor
+        return self._normaliser_objectives.transform_scale(noise_std_tensor)

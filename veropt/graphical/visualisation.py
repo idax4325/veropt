@@ -183,7 +183,8 @@ def plot_progression(
 
 def plot_pareto_front_grid(
         optimiser: BayesianOptimiser,
-        normalised: bool = False
+        normalised: bool = False,
+        uncertainty_style: str = 'ellipse'
 ) -> go.Figure:
 
     if optimiser.return_normalised_data and normalised is False:
@@ -198,9 +199,12 @@ def plot_pareto_front_grid(
         suggested_points = optimiser.suggested_points
         reference_point = None
 
+    noise_std_per_objective = optimiser._noise_std_tensor
+
     pareto_optimal_indices = get_pareto_optimal_points(
         variable_values=variable_values,
         objective_values=objective_values,
+        noise_std_per_objective=noise_std_per_objective,
     )['index']
 
     objective_names = optimiser.objective.objective_names
@@ -212,6 +216,8 @@ def plot_pareto_front_grid(
         n_initial_points=optimiser.n_initial_points,
         suggested_points=suggested_points,
         reference_point=reference_point,
+        noise_std_per_objective=noise_std_per_objective,
+        uncertainty_style=uncertainty_style,  # type: ignore[arg-type]
         return_figure=True
     )
 
@@ -221,7 +227,8 @@ def plot_pareto_front_grid(
 def plot_pareto_front(
         optimiser: BayesianOptimiser,
         plotted_objective_indices: list[int],
-        normalised: bool = False
+        normalised: bool = False,
+        uncertainty_style: str = 'ellipse'
 ) -> go.Figure:
 
     if optimiser.return_normalised_data and normalised is False:
@@ -236,9 +243,12 @@ def plot_pareto_front(
         suggested_points = optimiser.suggested_points
         reference_point = None
 
+    noise_std_per_objective = optimiser._noise_std_tensor
+
     pareto_optimal_indices = get_pareto_optimal_points(
         variable_values=variable_values,
         objective_values=objective_values,
+        noise_std_per_objective=noise_std_per_objective,
     )['index']
 
     figure = _plot_pareto_front(
@@ -249,6 +259,8 @@ def plot_pareto_front(
         n_initial_points=optimiser.n_initial_points,
         suggested_points=suggested_points,
         reference_point=reference_point,
+        noise_std_per_objective=noise_std_per_objective,
+        uncertainty_style=uncertainty_style,  # type: ignore[arg-type]
         return_figure=True
     )
 
@@ -258,7 +270,7 @@ def plot_pareto_front(
 def plot_prediction_grid(
         optimiser: BayesianOptimiser,
         model_prediction_container: Optional[ModelPredictionContainer] = None,
-        evaluated_point: Optional[Union[torch.Tensor, int]] = None,
+        evaluated_point: Optional[Union[torch.Tensor, int, str]] = None,
         plot_acquisition: bool = False,
         n_calculated_points: Optional[int] = None,
         normalised: bool = False
@@ -293,7 +305,15 @@ def plot_prediction_grid(
         # Could do more checks to make sure this is consistent but this will probably catch most potential errors
         assert model_prediction_container.normalised == normalised
 
-    if isinstance(evaluated_point, int):
+    if isinstance(evaluated_point, str):
+
+        evaluated_point, title_extension = choose_plot_point(
+            optimiser=optimiser,
+            normalised=normalised,
+            point_selection=evaluated_point
+        )
+
+    elif isinstance(evaluated_point, int):
 
         title_extension = f' at point {evaluated_point}'
 
@@ -474,7 +494,7 @@ def plot_prediction_surface(
         variable_x: Union[int, str],
         variable_y: Union[int, str],
         objective: Union[int, str],
-        evaluated_point: Optional[Union[torch.Tensor, int]],
+        evaluated_point: Optional[Union[torch.Tensor, int, str]] = None,
         normalised: bool = False,
         n_points_per_dimension: int = 200,
         figure: Optional[go.Figure] = None,
@@ -488,11 +508,12 @@ def plot_prediction_surface(
     else:
         variable_values = optimiser.evaluated_variable_values.tensor
 
-    if evaluated_point is None:
+    if evaluated_point is None or isinstance(evaluated_point, str):
 
         evaluated_point, title = choose_plot_point(
             optimiser=optimiser,
-            normalised=normalised
+            normalised=normalised,
+            point_selection=evaluated_point if isinstance(evaluated_point, str) else None
         )
 
     elif isinstance(evaluated_point, int):
@@ -528,6 +549,7 @@ def plot_prediction_surface(
         n_points_per_dimension=n_points_per_dimension
     )
 
+    # TODO: This is wrong when we know the evaluated value of the point
     evaluated_point_objective_value = optimiser.predictor.predict_values(
         variable_values=evaluated_point,
         normalised=normalised
@@ -576,7 +598,7 @@ def plot_prediction_surface(
 def plot_prediction_surface_grid(
         optimiser: BayesianOptimiser,
         objective: Union[int, str],
-        evaluated_point: Optional[Union[torch.Tensor, int]] = None,
+        evaluated_point: Optional[Union[torch.Tensor, int, str]] = None,
         included_variables: Optional[Union[list[int], list[str]]] = None,
         n_points_per_dimension: int = 200,
         camera: Optional[dict[Literal['eye', 'center', 'up'], dict[Literal['x', 'y', 'z'], float]]] = None,
@@ -603,12 +625,13 @@ def plot_prediction_surface_grid(
         _included_variables = included_variables  # type: ignore[assignment]  # Checked for other two options
         n_plotted_variables = len(_included_variables)
 
-    if evaluated_point is None:
+    if evaluated_point is None or isinstance(evaluated_point, str):
 
         evaluated_point, title_extension = choose_plot_point(
             optimiser=optimiser,
             normalised=normalised,
-            include_suggested_points=False
+            include_suggested_points=False,
+            point_selection=evaluated_point if isinstance(evaluated_point, str) else None
         )
 
     elif isinstance(evaluated_point, int):
@@ -704,7 +727,8 @@ def build_table(
     reference_objective_values = None
     if optimiser.reference_point is not None:
         reference_variable_values = optimiser.reference_point.variable_values[0]
-        reference_objective_values = optimiser.reference_point.objective_values[0]
+        if optimiser.reference_point.objective_values is not None:
+            reference_objective_values = optimiser.reference_point.objective_values[0]
 
     return _build_table(
         variable_names=variable_names,

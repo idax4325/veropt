@@ -445,3 +445,82 @@ class RemoteSlurmBatchManager(SubmitBatchManager):
     ) -> None:
         # TODO: Implement
         raise NotImplementedError("Remote slurm experiments are not supported yet.")
+
+
+class FakeSubmitBatchManager(SubmitBatchManager):
+    """
+    Fake SubmitBatchManager for testing - simulates job submission without a real SLURM queue.
+
+    Immediately writes fake output files when submit_batch is called, and marks all submitted
+    jobs as completed when wait_for_jobs is called. Tracks submitted batches for use in assertions.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self.submitted_batches: list[dict[int, dict]] = []
+        self._next_fake_job_id: int = 1
+
+    def submit_batch(
+            self,
+            dict_of_parameters: dict[int, dict],
+            experimental_state: ExperimentalState
+    ) -> None:
+
+        self.submitted_batches.append(dict(dict_of_parameters))
+
+        for point_no, parameters in dict_of_parameters.items():
+            simulation_id, result_directory = self._set_up_directory(point_no=point_no)
+
+            stdout_file = os.path.join(result_directory, f"{simulation_id}.out")
+            stderr_file = os.path.join(result_directory, f"{simulation_id}.err")
+            output_file = os.path.join(result_directory, f"{self.output_filename}.txt")
+
+            with open(stdout_file, "w") as f:
+                f.write(str(self._next_fake_job_id))
+            with open(stderr_file, "w") as f:
+                f.write("")
+            with open(output_file, "w") as f:
+                f.write(str(float(point_no + 1)))
+
+            result = SimulationResult(
+                simulation_id=simulation_id,
+                parameters=parameters,
+                output_directory=result_directory,
+                output_filename=self.output_filename,
+                stdout_file=stdout_file,
+                stderr_file=stderr_file,
+                return_code=0
+            )
+
+            _check_if_point_exists(
+                i=point_no,
+                parameters=parameters,
+                experimental_state=experimental_state
+            )
+
+            experimental_state.points[point_no].state = "Simulation started"
+            experimental_state.points[point_no].job_id = self._next_fake_job_id
+            experimental_state.points[point_no].result = result
+
+            self._next_fake_job_id += 1
+
+        experimental_state.save_to_json(self.experimental_state_json)
+
+    def wait_for_jobs(
+            self,
+            experimental_state: ExperimentalState
+    ) -> None:
+
+        for point in experimental_state.points.values():
+            if point.state in ("Simulation started", "Simulation running"):
+                point.state = "Simulation completed"
+
+        experimental_state.save_to_json(self.experimental_state_json)
+
+    @property
+    def n_jobs_submitted(self) -> int:
+        return sum(len(batch) for batch in self.submitted_batches)
+
+    @property
+    def n_batches_submitted(self) -> int:
+        return len(self.submitted_batches)

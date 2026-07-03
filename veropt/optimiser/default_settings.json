@@ -5,7 +5,9 @@
   },
   "acquisition": {
     "multi_objective": "qlogehvi",
-    "single_objective": "ucb"
+    "single_objective": "ucb",
+    "noisy_multi_objective": "qlogneHVI",
+    "noisy_single_objective": "ucb"
   },
   "acquisition_optimiser": "dual_annealing",
   "normaliser": "zero_mean_unit_variance"

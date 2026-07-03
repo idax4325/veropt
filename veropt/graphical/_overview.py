@@ -176,6 +176,9 @@ def plot_point_overview_separate_subplots(
                 row_no = n_objectives - objective_index
                 col_no = variable_index + 1
 
+                if reference_point.objective_values is None:
+                    continue
+
                 figure.add_trace(
                     go.Scatter(
                         x=[reference_point.variable_values[0, variable_index].item()],
@@ -271,7 +274,7 @@ def _plot_progression(
             yaxis=yaxis_names[objective_index]
         ))
 
-        if reference_point is not None:
+        if reference_point is not None and reference_point.objective_values is not None:
             reference_value = reference_point.objective_values[0, objective_index]
 
             # Horizontal dashed line across the x-axis range

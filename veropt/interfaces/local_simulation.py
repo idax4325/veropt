@@ -21,7 +21,9 @@ class VirtualEnvironmentManager(ABC):
             args=['/bin/bash', '-c', '%s && %s' % (source, dump)],
             stdout=subprocess.PIPE)
 
-        os.environ = json.loads(s=pipe.stdout.read())  # type: ignore
+        assert pipe.stdout is not None
+        # os.environ stubs don't accept dict[str, Any] from json
+        os.environ = json.loads(s=pipe.stdout.read())  # type: ignore[assignment]
 
     def run_in_virtual_environment(
             self,

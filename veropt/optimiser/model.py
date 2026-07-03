@@ -99,6 +99,9 @@ def format_json_state_dict(
     return formatted_dict
 
 
+_NOISE_CONSTRAINT_FLOOR: float = 1e-8
+
+
 class GPyTorchSingleModel(SavableClass, metaclass=abc.ABCMeta):
 
     name: str = 'meta'
@@ -146,7 +149,8 @@ class GPyTorchSingleModel(SavableClass, metaclass=abc.ABCMeta):
     def from_n_variables_and_settings(
             cls,
             n_variables: int,
-            settings: Mapping[str, Any]
+            settings: Mapping[str, Any],
+            train_noise: bool = False
     ) -> Self:
         pass
 
@@ -156,9 +160,12 @@ class GPyTorchSingleModel(SavableClass, metaclass=abc.ABCMeta):
             saved_state: dict
     ) -> Self:
 
+        train_noise: bool = saved_state.get('train_noise', False)
+
         model = cls.from_n_variables_and_settings(
             n_variables=saved_state['n_variables'],
-            settings=saved_state['settings']
+            settings=saved_state['settings'],
+            train_noise=train_noise
         )
 
         if len(saved_state['state_dict']) > 0:
@@ -199,8 +206,22 @@ class GPyTorchSingleModel(SavableClass, metaclass=abc.ABCMeta):
         self.trained_parameters = parameter_group_list
 
     @abc.abstractmethod
-    def _set_up_model_constraints(self) -> None:
+    def _set_up_kernel_specific_constraints(self) -> None:
+        """Set kernel-specific parameter constraints (e.g. lengthscales, alpha).
+        Called automatically by _set_up_model_constraints — do NOT call _set_up_noise_constraints here."""
         pass
+
+    def _set_up_model_constraints(self) -> None:
+        """Concrete template: applies noise constraints first, then delegates to kernel-specific constraints."""
+        self._set_up_noise_constraints()
+        self._set_up_kernel_specific_constraints()
+
+    def _set_up_noise_constraints(self) -> None:
+        """Set the numerical-floor noise constraint and initial near-zero noise value.
+        Called automatically from _set_up_model_constraints — not to be called directly from kernels."""
+        self.set_noise_constraint(lower_bound=_NOISE_CONSTRAINT_FLOOR)
+        # Near-zero default; overwritten by _apply_physical_noise if noise_std is set.
+        self.set_noise(_NOISE_CONSTRAINT_FLOOR)
 
     def initialise_model_with_data(
             self,
@@ -240,7 +261,8 @@ class GPyTorchSingleModel(SavableClass, metaclass=abc.ABCMeta):
 
         if self.model_with_data is not None:
             state_dict = self.model_with_data.state_dict()
-            train_inputs = self.model_with_data.train_inputs
+            # train_inputs is a gpytorch tuple (X_tensor,); unpack to avoid extra batch dim on reload
+            (train_inputs,) = self.model_with_data.train_inputs  # type: ignore[misc]  # gpytorch stubs as Module
             train_targets = self.model_with_data.train_targets
 
         else:
@@ -248,6 +270,7 @@ class GPyTorchSingleModel(SavableClass, metaclass=abc.ABCMeta):
             train_inputs = None
             train_targets = None
 
+        # Always save train_noise for reconstruction; the actual noise value is re-derived at training time.
         return {
             'name': self.name,
             'state': {
@@ -255,7 +278,8 @@ class GPyTorchSingleModel(SavableClass, metaclass=abc.ABCMeta):
                 'train_inputs': train_inputs,
                 'train_targets': train_targets,
                 'n_variables': self.n_variables,
-                'settings': self.get_settings().gather_dicts_to_save()
+                'settings': self.get_settings().gather_dicts_to_save(),
+                'train_noise': self.train_noise,
             }
         }
 
@@ -685,13 +709,26 @@ class GPyTorchFullModel(SurrogateModel, SavableClass):
             self,
             *,
             variable_values: torch.Tensor,
-            objective_values: torch.Tensor
+            objective_values: torch.Tensor,
+            noise_std_in_model_space: Optional[torch.Tensor] = None,
+            noise_std_min_in_model_space: Optional[torch.Tensor] = None,
+            noise_std_max_in_model_space: Optional[torch.Tensor] = None,
     ) -> None:
 
         self.initialise_model(
             variable_values=variable_values,
             objective_values=objective_values
         )
+
+        if noise_std_in_model_space is not None:
+            self._apply_physical_noise(
+                noise_std_in_model_space=noise_std_in_model_space
+            )
+        elif noise_std_min_in_model_space is not None or noise_std_max_in_model_space is not None:
+            self._apply_noise_bounds(
+                noise_std_min_in_model_space=noise_std_min_in_model_space,
+                noise_std_max_in_model_space=noise_std_max_in_model_space
+            )
 
         self._set_mode_train()
 
@@ -738,6 +775,76 @@ class GPyTorchFullModel(SurrogateModel, SavableClass):
         self._likelihood = gpytorch.likelihoods.LikelihoodList(
             *[model.model_with_data.likelihood for model in self._model_list]  # type: ignore[union-attr]
         )
+
+    def _apply_physical_noise(
+            self,
+            noise_std_in_model_space: torch.Tensor
+    ) -> None:
+        """Pin every single model's noise to the physical variance derived from noise_std.
+        Must NOT be called on the train=False reload path (state_dict already encodes correct noise)."""
+
+        assert len(noise_std_in_model_space) == self.n_objectives, (
+            f"noise_std_in_model_space length ({len(noise_std_in_model_space)}) "
+            f"must match n_objectives ({self.n_objectives})."
+        )
+
+        for objective_index, single_model in enumerate(self._model_list):
+
+            if single_model.model_with_data is None:
+                continue
+
+            physical_variance = float(noise_std_in_model_space[objective_index] ** 2)
+            assert physical_variance > _NOISE_CONSTRAINT_FLOOR, (
+                f"Physical noise variance {physical_variance:.2e} for objective {objective_index} "
+                f"is below the numerical floor {_NOISE_CONSTRAINT_FLOOR:.2e}. "
+                f"Increase noise_std to a physically meaningful value."
+            )
+            # Reset the noise constraint to the canonical floor before setting the value.
+            # load_state_dict may have restored a stale lower_bound from an older JSON
+            # (e.g. v3 where lower_bound = 0.99 * physical_variance).  Without this reset,
+            # the raw_noise GPyTorch stores is calibrated against the wrong lower_bound and
+            # a subsequent save would re-produce a v3-style state_dict.
+            single_model.set_noise_constraint(lower_bound=_NOISE_CONSTRAINT_FLOOR)
+            single_model.set_noise(physical_variance)
+
+    def _apply_noise_bounds(
+            self,
+            noise_std_min_in_model_space: Optional[torch.Tensor],
+            noise_std_max_in_model_space: Optional[torch.Tensor],
+    ) -> None:
+        """Constrain the learned noise within [min_variance, max_variance] for each objective.
+        Called when train_noise=True and noise_std_min or noise_std_max is set."""
+
+        for objective_index, single_model in enumerate(self._model_list):
+
+            if single_model.model_with_data is None:
+                continue
+
+            min_var = (
+                float(noise_std_min_in_model_space[objective_index] ** 2)
+                if noise_std_min_in_model_space is not None
+                else None
+            )
+            max_var = (
+                float(noise_std_max_in_model_space[objective_index] ** 2)
+                if noise_std_max_in_model_space is not None
+                else None
+            )
+            lower = max(_NOISE_CONSTRAINT_FLOOR, min_var) if min_var is not None else _NOISE_CONSTRAINT_FLOOR
+
+            if max_var is not None:
+                assert max_var > lower, (
+                    f"noise_std_max variance {max_var:.2e} for objective {objective_index} must exceed "
+                    f"noise_std_min variance {lower:.2e}."
+                )
+                change_interval_constraints(
+                    lower_bound=lower,
+                    upper_bound=max_var,
+                    parameter_name='raw_noise',
+                    module=single_model.likelihood.noise_covar
+                )
+            else:
+                single_model.set_noise_constraint(lower_bound=lower)
 
     def get_gpytorch_model(self) -> botorch.models.ModelListGP:
 
